@@ -242,7 +242,7 @@ full-stack-dry: ## Dry-run full-stack (terraform plan + ansible check)
 	fi
 
 ###############################################################################
-# K8s Day-2 Operations (Articles 5-6-7)
+# K8s Day-2 Operations
 ###############################################################################
 
 .PHONY: k8s-apply-argocd k8s-apply-crossplane k8s-apply-security chaos-test velero-backup

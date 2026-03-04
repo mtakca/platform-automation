@@ -60,14 +60,14 @@ This single command:
 
 The `k8s/` directory contains production-ready manifests for platform-level Kubernetes operations:
 
-| Directory | Purpose | Article |
-|---|---|---|
-| `argocd/` | GitOps App-of-Apps root application | Part 5 |
-| `crossplane/` | Self-service PostgreSQL via Crossplane XRDs | Part 5 |
-| `velero/` | Hourly + daily backup schedules (MinIO backend) | Part 6 |
-| `storage/` | Portworx StorageClasses (repl3 prod, repl1 dev) | Part 6 |
-| `chaos/` | ChaosMesh experiments (Patroni kill, split-brain) | Part 6 |
-| `security/` | Kyverno image signing + Istio strict mTLS | Part 7 |
+| Directory | Purpose |
+|---|---|
+| `argocd/` | GitOps App-of-Apps root application |
+| `crossplane/` | Self-service PostgreSQL via Crossplane XRDs |
+| `velero/` | Hourly + daily backup schedules (MinIO backend) |
+| `storage/` | Portworx StorageClasses (repl3 prod, repl1 dev) |
+| `chaos/` | ChaosMesh experiments (Patroni kill, split-brain) |
+| `security/` | Kyverno image signing + Istio strict mTLS |
 
 ## Development Principles
 
