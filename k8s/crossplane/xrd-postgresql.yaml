@@ -1,0 +1,46 @@
+---
+# Crossplane CompositeResourceDefinition (XRD)
+# Defines a custom Kubernetes API: PostgreSQLInstance
+# Developers use this "Claim" to request databases without knowing internals.
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xpostgresqlinstances.database.platform.local
+spec:
+  group: database.platform.local
+  names:
+    kind: XPostgreSQLInstance
+    plural: xpostgresqlinstances
+  claimNames:
+    kind: PostgreSQLInstance
+    plural: postgresqlinstances
+  connectionSecretKeys:
+    - host
+    - port
+    - username
+    - password
+    - database
+    - dsn
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                storageGB:
+                  type: integer
+                  description: "Requested storage size in GB"
+                  minimum: 1
+                  maximum: 500
+                version:
+                  type: string
+                  description: "PostgreSQL version (14, 15, 16)"
+                  enum: ["14", "15", "16"]
+                  default: "15"
+              required:
+                - storageGB

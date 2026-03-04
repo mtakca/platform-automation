@@ -1,0 +1,33 @@
+---
+- name: Wait for connection
+  wait_for_connection:
+    delay: 10
+    timeout: 300
+
+- name: Create XFS filesystem on /dev/sdb
+  community.general.filesystem:
+    fstype: xfs
+    dev: /dev/sdb
+    opts: -f
+  # Ignore error if already formatted or mounted
+  ignore_errors: true
+  register: xfs_format
+
+- name: Create mount directory
+  file:
+    path: /mnt/data01
+    state: directory
+    mode: "0755"
+
+- name: Mount data disk
+  ansible.posix.mount:
+    path: /mnt/data01
+    src: /dev/sdb
+    fstype: xfs
+    state: mounted
+
+- name: Ensure permission on data mount
+  file:
+    path: /mnt/data01
+    state: directory
+    mode: "0755"

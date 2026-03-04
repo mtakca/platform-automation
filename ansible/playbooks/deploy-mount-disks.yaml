@@ -1,0 +1,11 @@
+---
+# deploy-mount-disks.yaml
+# Mounts secondary disks on all target hosts
+# Usage: ansible-playbook -i inventories/uat/uat.34.myapp.yaml playbooks/deploy-mount-disks.yaml
+
+- name: Mount Data Disks
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - mount-data-disks

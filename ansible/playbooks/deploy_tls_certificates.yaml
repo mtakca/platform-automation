@@ -1,0 +1,241 @@
+---
+# Deploy cert-manager CA and TLS Certificates
+# Usage: ansible-playbook -i inventories/uat/myapp.ini playbooks/deploy_tls_certificates.yaml
+
+- name: Setup TLS Certificates with cert-manager
+  hosts: kube_control_plane[0]
+  become: true
+  vars:
+    base_domain: "{{ base_domain | default('example.com') }}"
+    environment_prefix: "{{ environment_prefix | default('myapp-uat') }}"
+  tasks:
+    - name: Create Self-Signed ClusterIssuer
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: selfsigned-issuer
+          spec:
+            selfSigned: {}
+
+    - name: Create CA Certificate
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: example_user-ca
+            namespace: cert-manager
+          spec:
+            isCA: true
+            commonName: Example Internal CA
+            secretName: example_user-ca-secret
+            duration: 87600h # 10 years
+            privateKey:
+              algorithm: ECDSA
+              size: 256
+            issuerRef:
+              name: selfsigned-issuer
+              kind: ClusterIssuer
+              group: cert-manager.io
+
+    - name: Wait for CA certificate to be ready
+      kubernetes.core.k8s_info:
+        api_version: cert-manager.io/v1
+        kind: Certificate
+        name: example_user-ca
+        namespace: cert-manager
+      register: ca_cert
+      until: ca_cert.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0
+      retries: 30
+      delay: 2
+
+    - name: Create CA ClusterIssuer
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: ClusterIssuer
+          metadata:
+            name: example_user-ca-issuer
+          spec:
+            ca:
+              secretName: example_user-ca-secret
+
+    - name: Create Longhorn TLS Certificate
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: longhorn-tls
+            namespace: longhorn-system
+          spec:
+            secretName: longhorn-tls-secret
+            duration: 8760h
+            renewBefore: 720h
+            commonName: "longhorn-{{ environment_prefix }}.{{ base_domain }}"
+            dnsNames:
+              - "longhorn-{{ environment_prefix }}.{{ base_domain }}"
+            issuerRef:
+              name: example_user-ca-issuer
+              kind: ClusterIssuer
+
+    - name: Create Hubble TLS Certificate
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: hubble-tls
+            namespace: kube-system
+          spec:
+            secretName: hubble-tls-secret
+            duration: 8760h
+            renewBefore: 720h
+            commonName: "hubble-{{ environment_prefix }}.{{ base_domain }}"
+            dnsNames:
+              - "hubble-{{ environment_prefix }}.{{ base_domain }}"
+            issuerRef:
+              name: example_user-ca-issuer
+              kind: ClusterIssuer
+
+    - name: Create Vault TLS Certificate
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cert-manager.io/v1
+          kind: Certificate
+          metadata:
+            name: vault-tls
+            namespace: vault
+          spec:
+            secretName: vault-tls-secret
+            duration: 8760h
+            renewBefore: 720h
+            commonName: "vault-{{ environment_prefix }}.{{ base_domain }}"
+            dnsNames:
+              - "vault-{{ environment_prefix }}.{{ base_domain }}"
+            issuerRef:
+              name: example_user-ca-issuer
+              kind: ClusterIssuer
+
+    - name: Update Longhorn Ingress with TLS
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: longhorn-ui
+            namespace: longhorn-system
+            annotations:
+              kubernetes.io/ingress.class: cilium
+          spec:
+            ingressClassName: cilium
+            tls:
+              - hosts:
+                  - "longhorn-{{ environment_prefix }}.{{ base_domain }}"
+                secretName: longhorn-tls-secret
+            rules:
+              - host: "longhorn-{{ environment_prefix }}.{{ base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: longhorn-frontend
+                          port:
+                            number: 80
+
+    - name: Update Hubble Ingress with TLS
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: hubble-ui
+            namespace: kube-system
+            annotations:
+              kubernetes.io/ingress.class: cilium
+          spec:
+            ingressClassName: cilium
+            tls:
+              - hosts:
+                  - "hubble-{{ environment_prefix }}.{{ base_domain }}"
+                secretName: hubble-tls-secret
+            rules:
+              - host: "hubble-{{ environment_prefix }}.{{ base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: hubble-ui
+                          port:
+                            number: 80
+
+    - name: Update Vault Ingress with TLS
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: vault-ui
+            namespace: vault
+            annotations:
+              kubernetes.io/ingress.class: cilium
+          spec:
+            ingressClassName: cilium
+            tls:
+              - hosts:
+                  - "vault-{{ environment_prefix }}.{{ base_domain }}"
+                secretName: vault-tls-secret
+            rules:
+              - host: "vault-{{ environment_prefix }}.{{ base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: vault
+                          port:
+                            number: 8200
+
+    - name: Verify all certificates are ready
+      kubernetes.core.k8s_info:
+        api_version: cert-manager.io/v1
+        kind: Certificate
+        namespace: "{{ item.namespace }}"
+        name: "{{ item.name }}"
+      register: cert_status
+      until: cert_status.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0
+      retries: 30
+      delay: 2
+      loop:
+        - { name: longhorn-tls, namespace: longhorn-system }
+        - { name: hubble-tls, namespace: kube-system }
+        - { name: vault-tls, namespace: vault }
+
+    - name: Display success message
+      ansible.builtin.debug:
+        msg: |
+          TLS Certificates configured successfully!
+
+          Access your services via HTTPS:
+          - https://longhorn-{{ environment_prefix }}.{{ base_domain }}
+          - https://hubble-{{ environment_prefix }}.{{ base_domain }}
+          - https://vault-{{ environment_prefix }}.{{ base_domain }}
+
+          Note: These certificates are signed by an internal CA.
+          Import the CA certificate to your browser to avoid security warnings.

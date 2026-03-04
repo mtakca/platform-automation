@@ -1,0 +1,21 @@
+---
+- name: Install HAProxy
+  apt:
+    name: haproxy
+    state: present
+    update_cache: yes
+
+- name: Configure HAProxy
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    validate: haproxy -c -f %s
+  notify: restart haproxy
+
+- name: Enable HAProxy service
+  service:
+    name: haproxy
+    state: started
+    enabled: yes
+# Keepalived logic has been moved to its own role (ansible/roles/keepalived)
+# This ensures Single Responsibility Principle.

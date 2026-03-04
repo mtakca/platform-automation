@@ -1,0 +1,38 @@
+---
+# Base path
+monitoring_data_dir: "/home/myapp/data"
+monitoring_compose_dir: "/home/myapp/monitoring"
+
+# Image versions (pinned)
+monitoring_otel_image: "otel/opentelemetry-collector-contrib:0.119.0"
+monitoring_jaeger_image: "jaegertracing/jaeger:2.3.0"
+monitoring_loki_image: "grafana/loki:3.4.2"
+monitoring_grafana_image: "grafana/grafana-oss:11.5.2"
+monitoring_prometheus_image: "prom/prometheus:v3.2.1"
+monitoring_portainer_image: "portainer/portainer-ce:2.27.1"
+monitoring_node_exporter_image: "prom/node-exporter:v1.9.0"
+
+# OTel Collector credentials
+otel_username: ""
+otel_password: ""
+
+# Jaeger Elasticsearch
+jaeger_elastic_host: ""
+jaeger_elastic_username: ""
+jaeger_elastic_password: ""
+
+# Loki S3
+loki_s3_host: ""
+loki_s3_access_key: ""
+loki_s3_secret_key: ""
+loki_s3_bucket_name: ""
+
+# Grafana SMTP
+grafana_smtp_enabled: true
+grafana_smtp_host: "smtp.gmail.com:465"
+grafana_smtp_user: ""
+grafana_smtp_password: ""
+
+# Prometheus targets (swarm manager IPs)
+prometheus_swarm_manager_ip: ""
+prometheus_additional_targets: []

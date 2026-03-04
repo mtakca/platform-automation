@@ -1,0 +1,71 @@
+---
+# Pre-Kubernetes Deployment Playbook
+# Creates required directories on external disk before Kubespray runs
+
+- name: Prepare External Disk Directories for Kubernetes
+  hosts: k8s_cluster
+  become: true
+  tasks:
+    - name: Ensure /mnt/data01 directory exists
+      ansible.builtin.file:
+        path: /mnt/data01
+        state: directory
+        mode: "0755"
+
+    - name: Check if /dev/sdb exists
+      ansible.builtin.stat:
+        path: /dev/sdb
+      register: sdb_device
+
+    - name: Create filesystem on /dev/sdb
+      community.general.filesystem:
+        fstype: xfs
+        dev: /dev/sdb
+      when: sdb_device.stat.exists
+
+    - name: Mount /dev/sdb to /mnt/data01
+      ansible.posix.mount:
+        path: /mnt/data01
+        src: /dev/sdb
+        fstype: xfs
+        state: mounted
+      when: sdb_device.stat.exists
+
+    - name: Force kill etcd container/process if running
+      ansible.builtin.shell: |
+        crictl ps -q --name etcd 2>/dev/null | xargs -r crictl stop 2>/dev/null || true
+        crictl ps -q --name etcd 2>/dev/null | xargs -r crictl rm 2>/dev/null || true
+        pkill -9 etcd 2>/dev/null || true
+      changed_when: false
+
+    - name: Aggressively cleanup etcd directories
+      ansible.builtin.shell: |
+        rm -rf /mnt/data01/etcd
+        rm -rf /var/lib/etcd
+        mkdir -p /mnt/data01/etcd /mnt/data01/etcd/wal
+        chmod 700 /mnt/data01/etcd /mnt/data01/etcd/wal
+      changed_when: false
+
+    - name: Create Kubernetes directories on external disk
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+      loop:
+        - /mnt/data01/containerd
+        - /mnt/data01/kubelet
+        - /mnt/data01/logs
+
+    - name: Create CNI directories for Cilium
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+      loop:
+        - /opt/cni/bin
+        - /etc/cni/net.d
+        - /run/cilium/cgroupv2

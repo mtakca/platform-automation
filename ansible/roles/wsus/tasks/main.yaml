@@ -1,0 +1,18 @@
+---
+- name: Install WSUS Server (UpdateServices)
+  ansible.windows.win_feature:
+    name: UpdateServices
+    state: present
+    include_management_tools: yes
+  register: wsus_install
+
+- name: Create WSUS Content Directory
+  ansible.windows.win_file:
+    path: 'D:\WSUS'
+    state: directory
+
+- name: Configure WSUS Content Path
+  ansible.windows.win_shell: |
+    & "C:\Program Files\Update Services\Tools\wsusutil.exe" postinstall CONTENT_DIR=D:\WSUS
+  when: wsus_install.changed
+

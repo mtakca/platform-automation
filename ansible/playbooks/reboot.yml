@@ -1,0 +1,8 @@
+---
+- name: Safely reboot target VMs
+  hosts: all
+  become: yes
+  gather_facts: false
+
+  roles:
+    - reboot_vm

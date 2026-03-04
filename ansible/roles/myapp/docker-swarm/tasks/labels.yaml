@@ -1,0 +1,20 @@
+---
+- name: Get current node hostname
+  ansible.builtin.command: hostname
+  register: node_hostname
+  changed_when: false
+
+- name: Apply node labels (managers)
+  ansible.builtin.command: >
+    docker node update --label-add {{ item }}=true {{ node_hostname.stdout }}
+  loop: "{{ swarm_labels }}"
+  when: swarm_mode in ['init', 'manager']
+  changed_when: false
+
+- name: Apply labels via manager (for workers)
+  ansible.builtin.command: >
+    docker node update --label-add {{ item }}=true {{ node_hostname.stdout }}
+  loop: "{{ swarm_labels }}"
+  delegate_to: "{{ groups['myapp_swarm_init'][0] }}"
+  when: swarm_mode == 'worker'
+  changed_when: false

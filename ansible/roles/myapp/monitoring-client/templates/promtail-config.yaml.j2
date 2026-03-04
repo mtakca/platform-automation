@@ -1,0 +1,88 @@
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: ${URL}
+    timeout: 5s
+    backoff_config:
+      min_period: 100ms
+      max_period: 2s
+      max_retries: 3
+    batchwait: 5s
+    batchsize: 10485760
+    drop_rate_limited_batches: true
+
+scrape_configs:
+  - job_name: docker_swarm_logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 20s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_com_docker_swarm_service_name]
+        target_label: service_name
+        action: replace
+        regex: (.+)
+        replacement: "$1"
+      - source_labels: [service_name]
+        target_label: service_name
+        action: replace
+        regex: "^$"
+        replacement: "${__meta_docker_container_name}"
+      - source_labels: [__meta_docker_container_id]
+        target_label: container_id
+      - source_labels: [__meta_docker_container_name]
+        target_label: container_name
+      - source_labels: [__meta_docker_container_label_log_level]
+        target_label: log_level
+      - target_label: region
+        replacement: ${REGION}
+        action: replace
+    pipeline_stages:
+      - docker: {}
+      - json:
+          expressions:
+            service_name: "service_name"
+      - labels:
+          service_name:
+          log_level:
+      - json:
+          expressions:
+            timestamp: ts
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - json:
+          expressions:
+            timestamp: timestamp
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - json:
+          expressions:
+            timestamp: time
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - regex:
+          expression: '\\b(\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}(?::?\\d{2})?)?)\\b'
+          source: __line__
+      - timestamp:
+          source: timestamp
+          format: RFC3339
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02 15:04:05 -0700"
+      - match:
+          selector: '{service_name=~"(manager|manager_celery|manager_celery_beat|extraction|classification|validation|validation_selfie|logger|autocapture)"}'
+          stages:
+            - regex:
+                expression: '^\\S+\\s+\\|\\s+\\[(.*?)\\]'
+                source: __line__
+            - timestamp:
+                source: timestamp
+                format: "2006-01-02 15:04:05 -0700"
+      - drop:
+          older_than: 1h
+      - match:
+          selector: '{service_name=~".*otel-collector.*|.*node-exporter.*|.*consul.*|.*promtail.*|.*cadvisor.*|.*portainer.*|.*rabbit.*"}'
+          action: drop

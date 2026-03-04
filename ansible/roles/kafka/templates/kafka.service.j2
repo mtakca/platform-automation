@@ -1,0 +1,20 @@
+[Unit]
+Description=Apache Kafka
+After=network.target
+
+[Service]
+Type=simple
+User=kafka
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+Environment="KAFKA_HEAP_OPTS=-Xmx{{ kafka_heap_size }} -Xms{{ kafka_heap_size }}"
+{% if kafka_jmx_enabled | default(false) %}
+Environment="KAFKA_OPTS=-javaagent:/opt/kafka/libs/jmx_prometheus_javaagent.jar={{ kafka_jmx_port }}:{{ kafka_jmx_config_file }}"
+{% endif %}
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=always
+RestartSec=10
+# Hardening
+ReadWritePaths=-{{ kafka_log_dir }}
+
+[Install]
+WantedBy=multi-user.target

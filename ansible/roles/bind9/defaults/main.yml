@@ -1,0 +1,49 @@
+---
+# Bind9 DNS Server Role Defaults
+# All environment-specific values are overridden by group_vars/all/environment.yml
+
+# Zone configuration (uses base_domain from environment.yml if defined)
+bind9_domain: "{{ base_domain | mandatory }}"
+bind9_zone_name: "{{ base_domain | mandatory }}"
+
+# Network configuration
+bind9_listen_on:
+  - any
+
+bind9_allow_query:
+  - any
+
+bind9_allow_transfer:
+  - "key externaldns-key"
+
+# Dynamic update configuration (RFC2136)
+bind9_allow_update:
+  - "key externaldns-key"
+
+# TSIG Key for ExternalDNS integration
+bind9_tsig_keyname: "externaldns-key"
+bind9_tsig_algorithm: "hmac-sha256"
+
+# Forwarders (MUST be defined in group_vars or inventory)
+bind9_forwarders: "{{ dns_forwarders | mandatory }}"
+
+# Zone file path (AppArmor requires dynamic zones in /var/lib/bind/)
+bind9_zone_file: "/var/lib/bind/db.{{ bind9_zone_name }}"
+
+# Trusted networks (MUST be defined in group_vars or inventory)
+bind9_trusted_networks: "{{ trusted_networks | mandatory }}"
+
+# HA Configuration
+# 'master' or 'slave' - set per host in inventory
+bind9_mode: "master"
+
+# Master IPs (for slaves to sync from)
+bind9_master_ips: []
+
+# Slave IPs (for master to notify and allow transfer)
+bind9_slave_ips: []
+
+# Keepalived VIP (shared IP for DNS)
+bind9_vip: ""
+bind9_vip_interface: "ens192"
+bind9_keepalived_priority: 100

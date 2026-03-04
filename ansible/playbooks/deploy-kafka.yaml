@@ -1,0 +1,7 @@
+---
+- name: Setup Kafka
+  hosts: kafka
+  gather_facts: no
+  become: yes
+  roles:
+    - kafka

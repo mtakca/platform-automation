@@ -1,0 +1,31 @@
+---
+- name: Precheck | Show hostname and uptime before reboot
+  shell: "echo Host: $(hostname) && uptime -p"
+  register: before_reboot
+  changed_when: false
+  become: true
+
+- debug:
+    var: before_reboot.stdout_lines
+
+# Asıl reboot
+- name: Reboot the machine
+  become: true
+  ansible.builtin.reboot:
+    msg: "System reboot initiated by Ansible"
+    connect_timeout: 10
+    reboot_timeout: "{{ reboot_timeout }}"   # 10 dakika bekleme süresi
+    pre_reboot_delay: "{{ pre_reboot_delay }}"
+    post_reboot_delay: "{{ post_reboot_delay }}"
+    test_command: whoami
+
+- name: Postcheck | Confirm uptime after reboot
+  shell: "uptime -p"
+  register: after_reboot
+  changed_when: false
+  become: true
+
+- debug:
+    msg:
+      - "✅ {{ inventory_hostname }} reboot completed successfully"
+      - "Uptime after reboot: {{ after_reboot.stdout }}"

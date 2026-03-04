@@ -1,0 +1,10 @@
+---
+# Deploy Bind9 DNS Server
+# Usage: ansible-playbook -i inventories/uat/myapp.ini playbooks/deploy_bind9.yaml --become
+
+- name: Deploy Bind9 DNS Server
+  hosts: dns
+  gather_facts: true
+  become: true
+  roles:
+    - bind9

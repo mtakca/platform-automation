@@ -1,0 +1,76 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install hardening tools
+  apt:
+    name:
+      - curl
+      - wget
+      - vim
+      - net-tools
+      - dnsutils
+      - fail2ban
+      - auditd
+      - molly-guard
+      - ufw
+    state: present
+
+- name: Configure Fail2Ban
+  copy:
+    dest: /etc/fail2ban/jail.local
+    content: |
+      [sshd]
+      enabled = true
+      port = {{ bastion_ssh_port }}
+      filter = sshd
+      logpath = /var/log/auth.log
+      maxretry = {{ bastion_fail2ban_maxretry }}
+      bantime = {{ bastion_fail2ban_bantime }}
+      findtime = {{ bastion_fail2ban_findtime }}
+  notify: restart fail2ban
+
+- name: Set Login Banner
+  copy:
+    dest: /etc/issue.net
+    content: "{{ bastion_banner_text }}"
+
+- name: Configure SSH (Hardening)
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    validate: "sshd -t -f %s"
+  loop:
+    - { regexp: "^#?Port", line: "Port {{ bastion_ssh_port }}" }
+    - { regexp: "^#?PermitRootLogin", line: "PermitRootLogin no" }
+    - { regexp: "^#?PasswordAuthentication", line: "PasswordAuthentication no" }
+    - { regexp: "^#?X11Forwarding", line: "X11Forwarding no" }
+    - {
+        regexp: "^#?MaxAuthTries",
+        line: "MaxAuthTries {{ bastion_max_auth_tries }}",
+      }
+    - {
+        regexp: "^#?ClientAliveInterval",
+        line: "ClientAliveInterval {{ bastion_idle_timeout }}",
+      }
+    - { regexp: "^#?ClientAliveCountMax", line: "ClientAliveCountMax 0" }
+    - { regexp: "^#?Banner", line: "Banner /etc/issue.net" }
+    - { regexp: "^#?AllowAgentForwarding", line: "AllowAgentForwarding yes" }
+    - { regexp: "^#?Protocol", line: "Protocol 2" }
+    - { regexp: "^#?UseDNS", line: "UseDNS no" }
+  notify: restart ssh
+
+- name: Enable Auditing (Auditd)
+  service:
+    name: auditd
+    state: started
+    enabled: yes
+
+- name: Enable Fail2Ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes

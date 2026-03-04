@@ -1,0 +1,17 @@
+---
+# Bind9 Handlers
+
+- name: restart bind9
+  ansible.builtin.service:
+    name: named
+    state: restarted
+
+- name: reload bind9
+  ansible.builtin.service:
+    name: named
+    state: reloaded
+
+- name: restart keepalived
+  ansible.builtin.service:
+    name: keepalived
+    state: restarted

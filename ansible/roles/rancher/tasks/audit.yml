@@ -1,0 +1,7 @@
+- name: Ensure Rancher audit log directory exists
+  file:
+    path: "{{ rancher_audit_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'

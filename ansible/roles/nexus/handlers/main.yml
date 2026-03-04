@@ -1,0 +1,5 @@
+---
+- name: restart nexus
+  service:
+    name: nexus
+    state: restarted

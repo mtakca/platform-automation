@@ -1,0 +1,49 @@
+global_defs {
+   router_id {{ keepalived_router_id_global }}
+}
+
+{% for script in keepalived_scripts %}
+vrrp_script {{ script.name }} {
+    script "{{ script.script }}"
+    interval {{ script.interval | default(2) }}
+    weight {{ script.weight | default(2) }}
+}
+{% endfor %}
+
+{% for instance in keepalived_instances %}
+vrrp_instance {{ instance.name }} {
+    state {{ instance.state }}
+    interface {{ instance.interface }}
+    virtual_router_id {{ instance.virtual_router_id }}
+    priority {{ instance.priority }}
+    advert_int {{ instance.advert_int | default(1) }}
+    
+    authentication {
+        auth_type PASS
+        auth_pass {{ instance.auth_pass }}
+    }
+    
+    virtual_ipaddress {
+        {% for vip in instance.virtual_ipaddresses %}
+        {{ vip }}
+        {% endfor %}
+    }
+    
+    {% if instance.track_scripts is defined %}
+    track_script {
+        {% for ts in instance.track_scripts %}
+        {{ ts }}
+        {% endfor %}
+    }
+    {% endif %}
+
+    {% if instance.unicast_src_ip is defined and instance.unicast_peers is defined %}
+    unicast_src_ip {{ instance.unicast_src_ip }}
+    unicast_peer {
+        {% for peer in instance.unicast_peers %}
+        {{ peer }}
+        {% endfor %}
+    }
+    {% endif %}
+}
+{% endfor %}

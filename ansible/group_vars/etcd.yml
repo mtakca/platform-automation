@@ -1,0 +1,19 @@
+---
+# Etcd Configuration
+# Reference: kubespray/inventory/sample/group_vars/etcd.yml
+
+# =============================================================================
+# ETCD STORAGE CONFIGURATION
+# Store etcd data on external disk for better I/O performance
+# =============================================================================
+
+# Etcd data directory (cluster state)
+etcd_data_dir: "/mnt/data01/etcd"
+
+# Etcd WAL directory (Write-Ahead Log)
+# For best performance, this should be on a separate disk from data_dir
+# but we use same disk for simplicity
+etcd_wal_dir: "/mnt/data01/etcd/wal"
+
+# Quota backend bytes (default 2GB, can increase for larger clusters)
+etcd_quota_backend_bytes: "8589934592" # 8GB

@@ -1,0 +1,9 @@
+---
+# Deploy FreeIPA Server
+# Usage: ansible-playbook playbooks/deploy-freeipa.yaml -i inventories/<env>/myapp.ini
+
+- name: Deploy FreeIPA Server
+  hosts: freeipa
+  become: true
+  roles:
+    - freeipa

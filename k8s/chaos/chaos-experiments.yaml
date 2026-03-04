@@ -1,0 +1,71 @@
+---
+# ChaosMesh Experiment: Kill Patroni Master
+# Tests HA failover of PostgreSQL Patroni cluster.
+# Expected result: Keepalived VIP migrates, Patroni promotes replica within ~5s.
+#
+# Prerequisites:
+#   - ChaosMesh installed: helm install chaos-mesh chaos-mesh/chaos-mesh -n chaos-mesh --create-namespace
+#   - Target pods must have labels: role=master, app=patroni
+#
+# Run: kubectl apply -f podchaos-kill-patroni-master.yaml
+# Monitor: kubectl get events -n <target-namespace> --watch
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: assassinate-postgres-master
+  namespace: chaos-mesh
+  labels:
+    experiment: patroni-failover
+    severity: critical
+  annotations:
+    chaos-mesh.org/description: "Kill Patroni master to test HA failover and VIP migration"
+    runbook: "https://wiki.platform.local/runbooks/patroni-failover"
+spec:
+  action: pod-kill
+  mode: fixed
+  value: "1"
+  gracePeriod: 0
+  selector:
+    labelSelectors:
+      role: master
+      app: patroni
+  duration: "30s"
+---
+# ChaosMesh Experiment: Network Split-Brain Simulation
+# Simulates a datacenter partition (100% packet loss between namespaces).
+# Tests quorum-based systems (Kafka KRaft, etcd) for correct split-brain handling.
+#
+# Expected result:
+#   - Majority partition continues serving
+#   - Minority partition denies writes
+#   - No data corruption after partition heals
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: split-brain-simulation
+  namespace: chaos-mesh
+  labels:
+    experiment: network-partition
+    severity: critical
+  annotations:
+    chaos-mesh.org/description: "Simulate cross-DC network partition for split-brain testing"
+    runbook: "https://wiki.platform.local/runbooks/split-brain-recovery"
+spec:
+  action: loss
+  mode: all
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      datacenter: ist
+  loss:
+    loss: "100"
+    correlation: "100"
+  direction: both
+  duration: "120s"
+  target:
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        datacenter: ank

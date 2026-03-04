@@ -1,0 +1,80 @@
+---
+- name: Check if node has required label
+  ansible.builtin.command: >
+    docker node ls --format "{{ '{{' }}.ID{{ '}}' }}" | xargs -I{} docker node inspect {} --format "{{ '{{' }}.ID{{ '}}' }} {{ '{{' }} index .Spec.Labels \"{{ service.name }}\" {{ '}}' }}" | grep "true"
+  register: nodes_with_label
+  failed_when: false
+  changed_when: false
+
+- name: Skip if no nodes with label
+  ansible.builtin.debug:
+    msg: "No node found with label {{ service.name }}=true, skipping"
+  when: nodes_with_label.rc != 0
+
+- name: Create volume directories
+  ansible.builtin.file:
+    path: "{{ service_base_volume_path }}/{{ service.name }}/{{ item }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+  loop: "{{ service.volumes | default([]) }}"
+  when: nodes_with_label.rc == 0
+
+- name: Check if service exists
+  ansible.builtin.command: docker service ls --filter name={{ service.name }} --format "{{ '{{' }}.Name{{ '}}' }}"
+  register: service_check
+  changed_when: false
+
+- name: Create service
+  ansible.builtin.shell: |
+    docker service create \
+      --name "{{ service.name }}" \
+      --limit-memory="{{ service.memory | default('512M') }}" \
+      --health-cmd="{{ service.health_check_cmd | default('curl -f ' + service.health_check_url + ' || exit 1') }}" \
+      --health-interval={{ service_health_interval }} \
+      --health-retries={{ service_health_retries }} \
+      --health-start-period={{ service_health_start_period }} \
+      --health-timeout={{ service_health_timeout }} \
+      {% for port in service.ports | default([]) %}
+      --publish {{ port }} \
+      {% endfor %}
+      --with-registry-auth \
+      --env-file "{{ service.env_file }}" \
+      --network {{ service.network | default(service_default_network) }} \
+      {% for volume in service.volumes | default([]) %}
+      --mount type=bind,source={{ service_base_volume_path }}/{{ service.name }}/{{ volume }},target=/{{ volume }} \
+      {% endfor %}
+      --mode global \
+      --constraint "node.labels.{{ service.name }} == true" \
+      "{{ service.image }}" \
+      {% if service.entry_point is defined %}{{ service.entry_point }}{% endif %}
+  when:
+    - nodes_with_label.rc == 0
+    - service_check.stdout == ""
+
+- name: Update service
+  ansible.builtin.shell: |
+    docker service update \
+      --limit-memory="{{ service.memory | default('512M') }}" \
+      --health-cmd="{{ service.health_check_cmd | default('curl -f ' + service.health_check_url + ' || exit 1') }}" \
+      --health-interval={{ service_health_interval }} \
+      --health-retries={{ service_health_retries }} \
+      --health-start-period={{ service_health_start_period }} \
+      --health-timeout={{ service_health_timeout }} \
+      {% for port in service.ports | default([]) %}
+      --publish-add {{ port }} \
+      {% endfor %}
+      {% for volume in service.volumes | default([]) %}
+      --mount-add type=bind,source={{ service_base_volume_path }}/{{ service.name }}/{{ volume }},target=/{{ volume }} \
+      {% endfor %}
+      --update-delay {{ service_update_delay }} \
+      --update-order "{{ service.update_order | default(service_update_order) }}" \
+      --update-failure-action={{ service_update_failure_action }} \
+      --with-registry-auth \
+      --image "{{ service.image }}" \
+      {% if service.entry_point is defined %}--args "{{ service.entry_point }}"{% endif %} \
+      "{{ service.name }}"
+  when:
+    - nodes_with_label.rc == 0
+    - service_check.stdout != ""

@@ -1,0 +1,124 @@
+---
+# Install Docker first (standalone node)
+- name: Install Docker on standalone node
+  ansible.builtin.include_tasks: ../../common/tasks/install-docker.yaml
+
+- name: Create monitoring compose directory
+  ansible.builtin.file:
+    path: "{{ monitoring_compose_dir }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+- name: Create monitoring data directories
+  ansible.builtin.file:
+    path: "{{ monitoring_data_dir }}/{{ item }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+  loop:
+    - portainer
+    - grafana
+    - grafana/data
+    - jaeger
+    - loki
+    - loki/config
+    - otel-collector
+    - prometheus
+    - prometheus/etc/prometheus
+    - prometheus/prometheus-data
+
+- name: Set Grafana directory permissions
+  ansible.builtin.file:
+    path: "{{ monitoring_data_dir }}/{{ item }}"
+    mode: "0777"
+  loop:
+    - grafana
+    - grafana/data
+    - loki
+
+- name: Create monitoring network
+  ansible.builtin.command: docker network create --driver=bridge monitoring
+  register: network_create
+  failed_when: false
+  changed_when: network_create.rc == 0
+
+- name: Deploy OTel Collector config
+  ansible.builtin.template:
+    src: otel-collector-config.yaml.j2
+    dest: "{{ monitoring_data_dir }}/otel-collector/otel-collector-config.yaml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy OTel Collector env file
+  ansible.builtin.template:
+    src: otel-collector.env.j2
+    dest: "{{ monitoring_data_dir }}/otel-collector/.env"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy Jaeger config
+  ansible.builtin.template:
+    src: jaeger-config.yaml.j2
+    dest: "{{ monitoring_data_dir }}/jaeger/jaeger-config.yaml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy Jaeger env file
+  ansible.builtin.template:
+    src: jaeger.env.j2
+    dest: "{{ monitoring_data_dir }}/jaeger/.env"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy Loki config
+  ansible.builtin.template:
+    src: loki-config.yaml.j2
+    dest: "{{ monitoring_data_dir }}/loki/config/config.yaml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy Loki env file
+  ansible.builtin.template:
+    src: loki.env.j2
+    dest: "{{ monitoring_data_dir }}/loki/.env"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy Grafana env file
+  ansible.builtin.template:
+    src: grafana.env.j2
+    dest: "{{ monitoring_data_dir }}/grafana/.env"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy Prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_data_dir }}/prometheus/etc/prometheus/prometheus.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ monitoring_compose_dir }}/docker-compose.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy monitoring stack
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ monitoring_compose_dir }}"
+  changed_when: true

@@ -1,0 +1,35 @@
+---
+# Wallet Middleware Stack Deployment
+# Single command to deploy: Redis, Kafka, Couchbase
+# PostgreSQL uses Autobase - separate command
+#
+# Usage:
+#   ansible-playbook -i inventories/uat/myapp/<service>/hosts.yaml playbooks/deploy-myapp-middleware.yaml
+#
+# Or run all at once:
+#   for svc in redis kafka couchbase; do
+#     ansible-playbook -i inventories/uat/myapp/$svc/hosts.yaml playbooks/deploy-myapp-middleware.yaml &
+#   done
+#   wait
+
+- name: Deploy Redis Sentinel HA
+  hosts: redis
+  become: true
+  roles:
+    - redis
+    - role: keepalived
+      when: groups['redis'] | default([]) | length > 1
+
+- name: Deploy Kafka KRaft Cluster
+  hosts: kafka
+  become: true
+  roles:
+    - kafka
+
+- name: Deploy Couchbase Cluster
+  hosts: couchbase
+  become: true
+  roles:
+    - couchbase
+    - role: keepalived
+      when: groups['couchbase'] | default([]) | length > 1

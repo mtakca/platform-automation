@@ -1,0 +1,6 @@
+---
+# Deploy Kubernetes Cluster using Kubespray
+# Usage: ansible-playbook playbooks/deploy-k8s.yaml -i inventories/p1/myapp.ini
+
+- name: Deploy Kubernetes Cluster with Kubespray
+  import_playbook: ../kubespray/cluster.yml

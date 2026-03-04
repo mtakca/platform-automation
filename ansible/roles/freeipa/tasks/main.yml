@@ -1,0 +1,126 @@
+---
+# FreeIPA Server Installation and Configuration
+# Supports external disk mount at /mnt/data01
+
+- name: Detect external data disk
+  set_fact:
+    has_data_disk: "{{ ansible_mounts | selectattr('mount', 'equalto', '/mnt/data01') | list | length > 0 }}"
+
+- name: Set data directory
+  set_fact:
+    ipa_data_dir: "{{ freeipa_data_dir if has_data_disk else '/var/lib/ipa' }}"
+
+- name: Create IPA data directory on external disk
+  file:
+    path: "{{ ipa_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: has_data_disk
+
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}.{{ freeipa_domain }}"
+
+- name: Update /etc/hosts
+  lineinfile:
+    path: /etc/hosts
+    regexp: "^{{ ansible_default_ipv4.address }}"
+    line: "{{ ansible_default_ipv4.address }} {{ inventory_hostname }}.{{ freeipa_domain }} {{ inventory_hostname }}"
+    state: present
+
+- name: Install FreeIPA server package
+  apt:
+    name:
+      - freeipa-server
+      - freeipa-server-dns
+      - bind9-utils
+    state: present
+    update_cache: yes
+  register: ipa_install
+
+- name: Check if FreeIPA is already configured
+  stat:
+    path: /etc/ipa/default.conf
+  register: ipa_configured
+
+- name: Configure FreeIPA Server
+  command: >
+    ipa-server-install
+    --unattended
+    --realm={{ freeipa_realm }}
+    --domain={{ freeipa_domain }}
+    --admin-password={{ freeipa_admin_password }}
+    --ds-password={{ freeipa_ds_password }}
+    {% if freeipa_setup_dns %}
+    --setup-dns
+    --no-forwarders
+    {% for forwarder in freeipa_forwarders %}
+    --forwarder={{ forwarder }}
+    {% endfor %}
+    {% endif %}
+    {% if freeipa_setup_ntp %}
+    --ntp-server=pool.ntp.org
+    {% endif %}
+    --hostname={{ inventory_hostname }}.{{ freeipa_domain }}
+  when: not ipa_configured.stat.exists
+  no_log: true
+
+- name: Configure UFW for FreeIPA
+  ufw:
+    rule: allow
+    port: "{{ item.split('/')[0] }}"
+    proto: "{{ item.split('/')[1] }}"
+  loop: "{{ freeipa_firewall_ports }}"
+  when: ansible_facts.services['ufw.service'] is defined
+
+- name: Symlink IPA data to external disk
+  block:
+    - name: Stop IPA services
+      service:
+        name: ipa
+        state: stopped
+
+    - name: Move IPA data to external disk
+      command: rsync -av /var/lib/ipa/ {{ ipa_data_dir }}/
+      args:
+        creates: "{{ ipa_data_dir }}/sysrestore"
+
+    - name: Remove original IPA directory
+      file:
+        path: /var/lib/ipa
+        state: absent
+
+    - name: Create symlink to external disk
+      file:
+        src: "{{ ipa_data_dir }}"
+        dest: /var/lib/ipa
+        state: link
+
+    - name: Start IPA services
+      service:
+        name: ipa
+        state: started
+        enabled: yes
+  when:
+    - has_data_disk
+    - ipa_configured.stat.exists
+
+- name: Ensure IPA services are running
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - ipa
+    - named
+  when: freeipa_setup_dns
+
+- name: Display admin credentials
+  debug:
+    msg: |
+      FreeIPA Server configured successfully!
+      Web UI: https://{{ inventory_hostname }}.{{ freeipa_domain }}
+      Admin user: admin
+      Realm: {{ freeipa_realm }}

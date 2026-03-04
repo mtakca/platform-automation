@@ -1,0 +1,37 @@
+---
+# ArgoCD Root Application — App-of-Apps Pattern
+# Monitors a Git directory for child Application manifests.
+# When a new folder/chart is pushed, ArgoCD auto-creates and syncs it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: "https://git.platform.local/platform/gitops-manifests.git"
+    targetRevision: HEAD
+    path: clusters/{{ .Values.clusterName }}/apps
+    directory:
+      recurse: true
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

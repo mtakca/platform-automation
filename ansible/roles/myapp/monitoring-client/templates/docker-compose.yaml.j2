@@ -1,0 +1,57 @@
+services:
+  promtail:
+    image: {{ monitoring_promtail_image }}
+    container_name: promtail
+    restart: unless-stopped
+    command: 
+      - -config.file=/etc/promtail/config.yaml
+      - -config.expand-env=true
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - {{ monitoring_client_data_dir }}/promtail/promtail-config.yaml:/etc/promtail/config.yaml
+      - {{ monitoring_client_data_dir }}/promtail/tmp:/tmp
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    env_file: {{ monitoring_client_data_dir }}/envs/.env.promtail
+    networks:
+      - monitoring-network
+
+  node-exporter:
+    image: {{ monitoring_node_exporter_image }}
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+      - /run/udev:/run/udev:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+    networks:
+      - monitoring-network
+
+  cadvisor:
+    image: {{ monitoring_cadvisor_image }}
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - --docker_only
+      - --disable_metrics=referenced_memory,process,sched,tcp,udp
+      - --disable_root_cgroup_stats=true
+    networks:
+      - monitoring-network
+
+networks:
+  monitoring-network:
+    external: true

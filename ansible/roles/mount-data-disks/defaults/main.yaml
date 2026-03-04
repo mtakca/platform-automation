@@ -1,0 +1,3 @@
+---
+# Default mount path for data disks
+mount_path: /data

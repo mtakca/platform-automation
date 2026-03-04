@@ -1,0 +1,38 @@
+---
+# Update DNS Nameservers on All UAT Hosts - Direct sed approach
+# Usage: ansible-playbook -i inventories/uat/combined_hosts.yaml playbooks/update-dns-nameservers.yaml
+
+- name: Update DNS Nameservers
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    dns_servers: "[8.8.8.8, 10.0.X.X, 10.0.X.X]"
+
+  tasks:
+    - name: Update nameservers in all netplan files
+      ansible.builtin.shell: |
+        for f in /etc/netplan/*.yaml; do
+          sed -i 's/addresses: \[.*\]/addresses: {{ dns_servers }}/' "$f"
+        done
+      args:
+        executable: /bin/bash
+      register: sed_result
+      changed_when: true
+
+    - name: Fix netplan permissions
+      ansible.builtin.shell: chmod 600 /etc/netplan/*.yaml
+      changed_when: true
+
+    - name: Apply netplan
+      ansible.builtin.command: netplan apply
+      changed_when: true
+
+    - name: Verify DNS config
+      ansible.builtin.shell: cat /etc/netplan/*.yaml | grep -A2 nameservers
+      register: verify_result
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ verify_result.stdout_lines }}"

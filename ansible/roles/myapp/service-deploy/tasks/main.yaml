@@ -1,0 +1,274 @@
+---
+# Login to Azure Container Registry
+- name: Login to ACR
+  ansible.builtin.shell: |
+    echo "{{ default_password }}" | docker login {{ acr_registry }} -u {{ acr_username }} --password-stdin
+  no_log: true
+  changed_when: false
+  when: default_password | default('') | length > 0
+
+# Create required directories
+- name: Create base volume directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+  loop:
+    - /home/myapp/data
+    - /home/myapp/data/envs
+  become: true
+
+# Deploy env files for each service
+- name: Deploy manager environment file
+  ansible.builtin.template:
+    src: env.manager.j2
+    dest: /home/myapp/data/envs/.env.manager
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy logger environment file
+  ansible.builtin.template:
+    src: env.logger.j2
+    dest: /home/myapp/data/envs/.env.logger
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy autocapture environment file
+  ansible.builtin.template:
+    src: env.autocapture.j2
+    dest: /home/myapp/data/envs/.env.autocapture
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy classification environment file
+  ansible.builtin.template:
+    src: env.classification.j2
+    dest: /home/myapp/data/envs/.env.classification
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy extraction environment file
+  ansible.builtin.template:
+    src: env.extraction.j2
+    dest: /home/myapp/data/envs/.env.extraction
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy validation environment file
+  ansible.builtin.template:
+    src: env.validation.j2
+    dest: /home/myapp/data/envs/.env.validation
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy validation_selfie environment file
+  ansible.builtin.template:
+    src: env.validation_selfie.j2
+    dest: /home/myapp/data/envs/.env.validation_selfie
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy resources environment file
+  ansible.builtin.template:
+    src: env.resources.j2
+    dest: /home/myapp/data/envs/.env.resources
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+# Copy service-deploy.sh script
+- name: Deploy service-deploy.sh script
+  ansible.builtin.template:
+    src: service-deploy.sh.j2
+    dest: /home/myapp/service-deploy.sh
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+# Create Network
+- name: Create default network if not exists
+  ansible.builtin.shell: |
+    docker network create --driver overlay --attachable {{ service_default_network }} 2>/dev/null || true
+  changed_when: false
+
+# Deploy each service using the script
+- name: Deploy manager service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service manager \
+      --replicas "{{ manager_replicas }}" \
+      --mode "{{ manager_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/manager:{{ myapp_image_tag_manager }}" \
+      --service_env_file /home/myapp/data/envs/.env.manager \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title MANAGER_MEMORY \
+      --network myapp-network \
+      --port 8000:8000 \
+      --health_check_url "http://localhost:8000/api/health/" \
+      --entry_point_input manager
+  become: true
+  become_user: myapp
+  register: deploy_manager
+  changed_when: "'updating' in deploy_manager.stdout or 'creating' in deploy_manager.stdout"
+
+- name: Deploy manager_celery service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service manager_celery \
+      --replicas "{{ manager_celery_replicas }}" \
+      --mode "{{ manager_celery_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/manager:{{ myapp_image_tag_manager }}" \
+      --service_env_file /home/myapp/data/envs/.env.manager \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title MANAGER_CELERY_MEMORY \
+      --network myapp-network \
+      --health_check_cmd "celery -A config.tasks inspect ping -d celery@\$HOSTNAME" \
+      --entry_point_input celery
+  become: true
+  become_user: myapp
+  register: deploy_celery
+  changed_when: "'updating' in deploy_celery.stdout or 'creating' in deploy_celery.stdout"
+
+- name: Deploy manager_celery_beat service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service manager_celery_beat \
+      --replicas "{{ manager_celery_beat_replicas }}" \
+      --mode "{{ manager_celery_beat_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/manager:{{ myapp_image_tag_manager }}" \
+      --service_env_file /home/myapp/data/envs/.env.manager \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title MANAGER_CELERY_BEAT_MEMORY \
+      --network myapp-network \
+      --health_check_cmd "pgrep -f celery" \
+      --entry_point_input celery_beat
+  become: true
+  become_user: myapp
+  register: deploy_celery_beat
+  changed_when: "'updating' in deploy_celery_beat.stdout or 'creating' in deploy_celery_beat.stdout"
+
+- name: Deploy logger service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service logger \
+      --replicas "{{ logger_replicas }}" \
+      --mode "{{ logger_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/logger:{{ myapp_image_tag_logger }}" \
+      --service_env_file /home/myapp/data/envs/.env.logger \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title LOGGER_MEMORY \
+      --network myapp-network \
+      --port 5005:5000 \
+      --health_check_url "http://localhost:5000/api/logger/health"
+  become: true
+  become_user: myapp
+  register: deploy_logger
+  changed_when: "'updating' in deploy_logger.stdout or 'creating' in deploy_logger.stdout"
+
+- name: Deploy autocapture service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service autocapture \
+      --replicas "{{ autocapture_replicas }}" \
+      --mode "{{ autocapture_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/autocapture:{{ myapp_image_tag_autocapture }}" \
+      --service_env_file /home/myapp/data/envs/.env.autocapture \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title AUTO_CAPTURE_MEMORY \
+      --network myapp-network \
+      --port 5000:5000 \
+      --health_check_url "http://localhost:5000/api/autocapture/health"
+  become: true
+  become_user: myapp
+  register: deploy_autocapture
+  changed_when: "'updating' in deploy_autocapture.stdout or 'creating' in deploy_autocapture.stdout"
+
+- name: Deploy classification service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service classification \
+      --replicas "{{ classification_replicas }}" \
+      --mode "{{ classification_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/classification:{{ myapp_image_tag_classification }}" \
+      --service_env_file /home/myapp/data/envs/.env.classification \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title CLASSIFICATION_MEMORY \
+      --network myapp-network \
+      --port 5001:5000 \
+      --health_check_url "http://localhost:5000/api/classification/health"
+  become: true
+  become_user: myapp
+  register: deploy_classification
+  changed_when: "'updating' in deploy_classification.stdout or 'creating' in deploy_classification.stdout"
+
+- name: Deploy extraction service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service extraction \
+      --replicas "{{ extraction_replicas }}" \
+      --mode "{{ extraction_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/extraction:{{ myapp_image_tag_extraction }}" \
+      --service_env_file /home/myapp/data/envs/.env.extraction \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title EXTRACTION_MEMORY \
+      --network myapp-network \
+      --port 5002:5000 \
+      --health_check_url "http://localhost:5000/api/extraction/health"
+  become: true
+  become_user: myapp
+  register: deploy_extraction
+  changed_when: "'updating' in deploy_extraction.stdout or 'creating' in deploy_extraction.stdout"
+
+- name: Deploy validation service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service validation \
+      --replicas "{{ validation_replicas }}" \
+      --mode "{{ validation_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/validation:{{ myapp_image_tag_validation }}" \
+      --service_env_file /home/myapp/data/envs/.env.validation \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title VALIDATION_MEMORY \
+      --network myapp-network \
+      --port 5003:5000 \
+      --health_check_url "http://localhost:5000/api/validation/health"
+  become: true
+  become_user: myapp
+  register: deploy_validation
+  changed_when: "'updating' in deploy_validation.stdout or 'creating' in deploy_validation.stdout"
+
+- name: Deploy validation_selfie service
+  ansible.builtin.shell: |
+    /home/myapp/service-deploy.sh \
+      --github_pat "unused" \
+      --service validation_selfie \
+      --replicas "{{ validation_selfie_replicas }}" \
+      --mode "{{ validation_selfie_mode }}" \
+      --image "{{ acr_registry }}/{{ acr_org | default('myapp') }}/validation_selfie:{{ myapp_image_tag_validation_selfie }}" \
+      --service_env_file /home/myapp/data/envs/.env.validation_selfie \
+      --resource_env_file /home/myapp/data/envs/.env.resources \
+      --memory_env_title VALIDATION_SELFIE_MEMORY \
+      --network myapp-network \
+      --port 5004:5000 \
+      --health_check_url "http://localhost:5000/api/validation_selfie/health"
+  become: true
+  become_user: myapp
+  register: deploy_validation_selfie
+  changed_when: "'updating' in deploy_validation_selfie.stdout or 'creating' in deploy_validation_selfie.stdout"

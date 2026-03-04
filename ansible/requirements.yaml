@@ -1,0 +1,25 @@
+---
+# Ansible Galaxy Requirements
+# Install: ansible-galaxy install -r requirements.yaml
+
+collections:
+  # OPNsense firewall management
+  - name: puzzle.opnsense
+    version: ">=1.0.0"
+
+  # Kubernetes management
+  - name: kubernetes.core
+    version: ">=3.0.0"
+
+  # Community general utilities
+  - name: community.general
+    version: ">=8.0.0"
+
+  # High Availability PostgreSQL (Autobase / Patroni)
+  - name: vitabaks.autobase
+    version: ">=2.0.0"
+
+roles:
+  # Docker for container runtime
+  - src: geerlingguy.docker
+    version: "7.0.2"

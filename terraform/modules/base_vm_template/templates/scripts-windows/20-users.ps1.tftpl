@@ -1,0 +1,11 @@
+# 2. User Configuration
+# VCD Guest Customization already set the Administrator password
+# Just ensure default user exists as a secondary admin
+$DefaultUser = "${default_user}"
+$DefaultPassword = ConvertTo-SecureString "${default_password}" -AsPlainText -Force
+
+# Check if user already exists
+if (-not (Get-LocalUser -Name $DefaultUser -ErrorAction SilentlyContinue)) {
+    New-LocalUser -Name $DefaultUser -Password $DefaultPassword -FullName "Default User" -Description "Created by Terraform" -PasswordNeverExpires $true -ErrorAction SilentlyContinue
+    Add-LocalGroupMember -Group "Administrators" -Member $DefaultUser -ErrorAction SilentlyContinue
+}

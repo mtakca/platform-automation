@@ -1,0 +1,5 @@
+---
+- name: Install Kubernetes (Kubespray)
+  import_playbook: ../kubespray/cluster.yml
+  vars:
+    ansible_become: yes

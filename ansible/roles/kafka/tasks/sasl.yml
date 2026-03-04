@@ -1,0 +1,31 @@
+- name: Create Kafka JAAS config
+  template:
+    src: kafka_server_jaas.conf.j2
+    dest: /opt/kafka/config/kafka_server_jaas.conf
+    owner: kafka
+    group: kafka
+    mode: "0600"
+  notify: restart kafka
+
+- name: Add JAAS to Kafka Env
+  lineinfile:
+    path: /etc/systemd/system/kafka.service
+    regexp: '^Environment="KAFKA_OPTS='
+    line: 'Environment="KAFKA_OPTS=-Djava.security.auth.login.config=/opt/kafka/config/kafka_server_jaas.conf"'
+    insertafter: '\[Service\]'
+  notify:
+    - reload systemd
+    - restart kafka
+
+# Note: Ideally this should check if user exists, but kafka-configs is idempotent-ish
+- name: Create SCRAM Users
+  shell: >
+    /opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092
+    --alter --add-config 'SCRAM-SHA-512=[password={{ item.password }}]'
+    --entity-type users --entity-name {{ item.name }}
+  loop: "{{ kafka_sasl_users | default([]) }}"
+  when: kafka_sasl_enabled | default(false)
+  # Only run if port 9092 is listening (Kafka is up)
+  ignore_errors: true
+  no_log: true
+  run_once: true

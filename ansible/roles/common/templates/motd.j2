@@ -1,0 +1,16 @@
+
+ ██████╗  █████╗ ██████╗ ███████╗██╗     
+ ██╔══██╗██╔══██╗██╔══██╗██╔════╝██║     
+ ██████╔╝███████║██████╔╝█████╗  ██║     
+ ██╔═══╝ ██╔══██║██╔═══╝ ██╔══╝  ██║     
+ ██║     ██║  ██║██║     ███████╗███████╗
+ ╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝
+                                          
+ Environment: {{ environment_name | default('UAT') }}
+ Hostname:    {{ inventory_hostname }}
+ IP Address:  {{ ansible_host }}
+ Role:        {{ role_name | default('server') }}
+ 
+ Managed by Ansible | Last updated: {{ ansible_date_time.iso8601 | default('N/A') }}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

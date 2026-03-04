@@ -1,0 +1,25 @@
+---
+# MinIO Role Defaults (Myapp Production)
+
+# Detect single node vs HA mode
+minio_node_count: "{{ groups['minio'] | default([]) | length }}"
+minio_is_ha: "{{ groups['minio'] | default([]) | length > 1 }}"
+
+# Data directories - EXTERNAL DISK
+minio_data_dir: "/mnt/data01/minio"
+
+# For single node: use local path
+# For distributed: use http://host:9000/path format
+minio_volumes: >-
+  {% if groups['minio'] | default([]) | length <= 1 %}
+  {{ minio_data_dir }}
+  {% else %}
+  {% for host in groups['minio'] %}http://{{ hostvars[host]['ansible_host'] }}:9000{{ minio_data_dir }} {% endfor %}
+  {% endif %}
+
+# Root user credentials
+minio_root_user: "minioadmin"
+minio_root_password: "{{ vault_minio_password | default('DefaultPassword123!') }}"
+
+# Console port
+minio_console_port: 9001

@@ -1,0 +1,6 @@
+---
+- name: Setup MinIO
+  hosts: minio
+  become: yes
+  roles:
+    - minio

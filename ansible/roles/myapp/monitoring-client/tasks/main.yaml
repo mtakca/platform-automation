@@ -1,0 +1,60 @@
+---
+# Install Docker first (standalone node needs it)
+- name: Install Docker on standalone node
+  ansible.builtin.include_tasks: ../../common/tasks/install-docker.yaml
+
+- name: Create monitoring compose directory
+  ansible.builtin.file:
+    path: "{{ monitoring_client_compose_dir }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+- name: Create promtail directories
+  ansible.builtin.file:
+    path: "{{ monitoring_client_data_dir }}/{{ item }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+  loop:
+    - promtail
+    - promtail/tmp
+    - envs
+
+- name: Create monitoring network
+  ansible.builtin.command: docker network create --driver=bridge monitoring-network
+  register: network_create
+  failed_when: false
+  changed_when: network_create.rc == 0
+
+- name: Deploy Promtail config
+  ansible.builtin.template:
+    src: promtail-config.yaml.j2
+    dest: "{{ monitoring_client_data_dir }}/promtail/promtail-config.yaml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy Promtail env file
+  ansible.builtin.template:
+    src: promtail.env.j2
+    dest: "{{ monitoring_client_data_dir }}/envs/.env.promtail"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ monitoring_client_compose_dir }}/docker-compose.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy monitoring client stack
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ monitoring_client_compose_dir }}"
+  changed_when: true

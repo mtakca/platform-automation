@@ -1,0 +1,8 @@
+---
+# MongoDB settings (Myapp Production)
+mongodb_image: "mongo:6.0.4"
+mongodb_data_dir: "/home/myapp/mongo"
+mongodb_user: "mongodbadmin"
+mongodb_password: "{{ vault_mongodb_password | default('CHANGE_ME') }}"
+mongodb_database: "example_user_logger_db"
+mongodb_port: 27017

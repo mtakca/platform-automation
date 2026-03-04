@@ -1,0 +1,23 @@
+---
+# Core HAProxy Deployment
+# Usage:
+#   ansible-playbook playbooks/deploy-core-haproxy.yaml -i inventories/uat/core/haproxy-ext
+#   ansible-playbook playbooks/deploy-core-haproxy.yaml -i inventories/uat/core/haproxy-int
+
+- name: Deploy HAProxy External
+  hosts: haproxy_ext
+  become: true
+  gather_facts: true
+  roles:
+    - haproxy
+    - keepalived
+  tags: [external]
+
+- name: Deploy HAProxy Internal
+  hosts: haproxy_int
+  become: true
+  gather_facts: true
+  roles:
+    - haproxy
+    - keepalived
+  tags: [internal]

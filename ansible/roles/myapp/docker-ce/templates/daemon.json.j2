@@ -1,0 +1,22 @@
+{
+  "data-root": "{{ docker_data_root }}",
+{% if docker_tcp_enabled %}
+  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:{{ docker_tcp_port }}"],
+  "tls": false,
+{% endif %}
+  "userns-remap": "{{ docker_userns_remap }}",
+  "default-ulimits": {
+    "nofile": {
+      "Name": "nofile",
+      "Hard": {{ docker_ulimit_nofile_hard }},
+      "Soft": {{ docker_ulimit_nofile_soft }}
+    }
+  },
+  "storage-driver": "{{ docker_storage_driver }}",
+  "storage-opts": [],
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "100m",
+    "max-file": "5"
+  }
+}

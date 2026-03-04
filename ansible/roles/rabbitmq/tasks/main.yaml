@@ -1,0 +1,170 @@
+---
+# RabbitMQ Installation via Docker
+
+- name: Install Docker prerequisites
+  apt:
+    name:
+      - docker.io
+      - docker-compose
+      - python3-docker
+    state: present
+    update_cache: yes
+
+- name: Ensure Docker is running
+  service:
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Create RabbitMQ directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ rabbitmq_data_dir }}"
+    - "{{ rabbitmq_data_dir }}/data"
+    - "{{ rabbitmq_data_dir }}/log"
+
+- name: Set Erlang cookie
+  copy:
+    dest: "{{ rabbitmq_data_dir }}/.erlang.cookie"
+    content: "{{ rabbitmq_erlang_cookie }}"
+    mode: "0400"
+
+- name: Create RabbitMQ config
+  copy:
+    dest: "{{ rabbitmq_data_dir }}/rabbitmq.conf"
+    content: |
+      listeners.tcp.default = {{ rabbitmq_amqp_port }}
+      management.tcp.port = {{ rabbitmq_management_port }}
+      vm_memory_high_watermark.relative = {{ rabbitmq_vm_memory_high_watermark }}
+      disk_free_limit.absolute = {{ rabbitmq_disk_free_limit }}
+      log.console = true
+      log.console.level = info
+      default_user = {{ rabbitmq_admin_user }}
+      default_pass = {{ rabbitmq_admin_password }}
+      default_vhost = /
+
+- name: Create docker-compose file
+  template:
+    src: docker-compose.yaml.j2
+    dest: "{{ rabbitmq_data_dir }}/docker-compose.yaml"
+    mode: "0644"
+
+- name: Start RabbitMQ container
+  shell: docker-compose up -d
+  args:
+    chdir: "{{ rabbitmq_data_dir }}"
+  register: rabbitmq_compose
+
+- name: Wait for RabbitMQ to start
+  wait_for:
+    port: "{{ rabbitmq_amqp_port }}"
+    delay: 5
+    timeout: 60
+
+- name: Create vhost
+  command: docker exec rabbitmq rabbitmqctl add_vhost {{ rabbitmq_vhost }}
+  register: add_vhost
+  failed_when: add_vhost.rc != 0 and 'already exists' not in add_vhost.stderr
+  changed_when: add_vhost.rc == 0
+  when: rabbitmq_vhost | length > 0
+
+- name: Set admin vhost permissions
+  command: docker exec rabbitmq rabbitmqctl set_permissions -p {{ rabbitmq_vhost }} {{ rabbitmq_admin_user }} ".*" ".*" ".*"
+  changed_when: false
+  when: rabbitmq_vhost | length > 0
+
+# Application User
+- name: Create application user
+  command: docker exec rabbitmq rabbitmqctl add_user {{ rabbitmq_app_user }} '{{ rabbitmq_app_password }}'
+  register: add_app_user
+  failed_when: add_app_user.rc != 0 and 'already exists' not in add_app_user.stderr
+  changed_when: add_app_user.rc == 0
+  when: rabbitmq_app_user | length > 0
+
+- name: Set application user tags
+  command: docker exec rabbitmq rabbitmqctl set_user_tags {{ rabbitmq_app_user }} administrator
+  changed_when: false
+  when: rabbitmq_app_user | length > 0
+
+- name: Set application user permissions
+  command: docker exec rabbitmq rabbitmqctl set_permissions -p {{ rabbitmq_vhost }} {{ rabbitmq_app_user }} ".*" ".*" ".*"
+  changed_when: false
+  when: rabbitmq_app_user | length > 0 and rabbitmq_vhost | length > 0
+
+# Cluster Join (non-master nodes only)
+- name: Check cluster membership
+  command: docker exec rabbitmq rabbitmqctl cluster_status --formatter=json
+  register: cluster_status
+  changed_when: false
+  when:
+    - rabbitmq_is_ha | bool
+    - inventory_hostname != rabbitmq_cluster_master
+
+- name: Join cluster
+  shell: |
+    docker exec rabbitmq rabbitmqctl stop_app
+    docker exec rabbitmq rabbitmqctl reset
+    docker exec rabbitmq rabbitmqctl join_cluster rabbit@{{ rabbitmq_cluster_master }}
+    docker exec rabbitmq rabbitmqctl start_app
+  when:
+    - rabbitmq_is_ha | bool
+    - inventory_hostname != rabbitmq_cluster_master
+    - rabbitmq_cluster_master not in (cluster_status.stdout | default(''))
+  register: cluster_join
+  changed_when: cluster_join.rc == 0
+
+# Keepalived for HA
+- name: Install Keepalived
+  apt:
+    name: keepalived
+    state: present
+  when: rabbitmq_keepalived_enabled | default(true) and rabbitmq_is_ha | bool
+
+- name: Configure Keepalived
+  copy:
+    dest: /etc/keepalived/keepalived.conf
+    content: |
+      global_defs {
+          router_id RABBITMQ_{{ inventory_hostname_short }}
+      }
+
+      vrrp_script chk_rabbitmq {
+          script "docker exec rabbitmq rabbitmqctl status"
+          interval 5
+          weight 2
+          fall 3
+          rise 2
+      }
+
+      vrrp_instance VI_RABBITMQ {
+          state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+          interface {{ rabbitmq_keepalived_interface }}
+          virtual_router_id {{ keepalived_vrid }}
+          priority {{ keepalived_priority }}
+          advert_int 1
+
+          authentication {
+              auth_type PASS
+              auth_pass rabbitmq_ha
+          }
+
+          virtual_ipaddress {
+              {{ keepalived_vip }}
+          }
+
+          track_script {
+              chk_rabbitmq
+          }
+      }
+  when: rabbitmq_keepalived_enabled | default(true) and rabbitmq_is_ha | bool
+  notify: restart keepalived
+
+- name: Enable Keepalived
+  service:
+    name: keepalived
+    state: started
+    enabled: yes
+  when: rabbitmq_keepalived_enabled | default(true) and rabbitmq_is_ha | bool

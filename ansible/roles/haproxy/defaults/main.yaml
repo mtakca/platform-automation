@@ -1,0 +1,29 @@
+# General Settings
+haproxy_global_maxconn: 20000
+haproxy_global_log: "/dev/log local0"
+haproxy_default_mode: "tcp"
+haproxy_default_timeout_connect: "5000"
+haproxy_default_timeout_client: "50000"
+haproxy_default_timeout_server: "50000"
+
+# Stats
+haproxy_stats_enabled: true
+haproxy_stats_port: 8404
+haproxy_stats_uri: "/monitor"
+haproxy_stats_user: "admin"
+haproxy_stats_pass: "" # SET IN INVENTORY
+
+# Services List
+haproxy_services: []
+# Structure:
+# - name: kube_api
+#   bind: "*:6443"
+#   mode: tcp
+#   balance: roundrobin
+#   options:
+#     - tcp-check
+#   backend_servers:
+#     - name: k8s-master-01
+#       address: 10.0.X.X
+#       port: 6443
+#       params: "check"

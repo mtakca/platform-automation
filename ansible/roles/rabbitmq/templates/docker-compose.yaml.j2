@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  rabbitmq:
+    image: rabbitmq:{{ rabbitmq_image_tag }}
+    container_name: rabbitmq
+    hostname: {{ inventory_hostname }}
+    restart: always
+    network_mode: host
+    volumes:
+      - {{ rabbitmq_data_dir }}/data:/var/lib/rabbitmq
+      - {{ rabbitmq_data_dir }}/log:/var/log/rabbitmq
+      - {{ rabbitmq_data_dir }}/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    environment:
+      - RABBITMQ_ERLANG_COOKIE={{ rabbitmq_erlang_cookie }}
+      - RABBITMQ_DEFAULT_USER={{ rabbitmq_admin_user }}
+      - RABBITMQ_DEFAULT_PASS={{ rabbitmq_admin_password }}
+    extra_hosts:
+{% for host in groups['rabbitmq'] %}
+      - "{{ hostvars[host].inventory_hostname }}:{{ hostvars[host].ansible_host }}"
+{% endfor %}

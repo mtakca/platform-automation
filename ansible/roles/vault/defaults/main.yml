@@ -1,0 +1,30 @@
+---
+# Vault Native Installation Role - Default Variables
+
+vault_version: "1.15.4"
+vault_user: "vault"
+vault_group: "vault"
+
+# Storage backend - Raft for HA cluster
+vault_storage_backend: "raft"
+vault_data_dir: "/mnt/data01/vault"
+vault_config_dir: "/etc/vault.d"
+
+# Network
+vault_api_port: 8200
+vault_cluster_port: 8201
+vault_api_addr: "http://{{ ansible_host }}:{{ vault_api_port }}"
+vault_cluster_addr: "https://{{ ansible_host }}:{{ vault_cluster_port }}"
+
+# TLS (disabled by default for initial setup)
+vault_tls_disable: true
+
+# Raft HA cluster settings
+vault_raft_node_id: "{{ inventory_hostname }}"
+vault_raft_leader_addr: "{{ hostvars[groups['vault'][0]]['ansible_host'] }}"
+
+# UI
+vault_ui_enabled: true
+
+# Log level
+vault_log_level: "info"

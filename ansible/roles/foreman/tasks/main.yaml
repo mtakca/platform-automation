@@ -1,0 +1,43 @@
+---
+- name: Install required packages
+  apt:
+    name:
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - wget
+    state: present
+    update_cache: yes
+
+- name: Add Foreman GPG Key
+  apt_key:
+    url: https://deb.theforeman.org/pubkey.gpg
+    state: present
+
+- name: Add Foreman Repo
+  apt_repository:
+    repo: "deb http://deb.theforeman.org/ {{ ansible_distribution_release }} 3.11"
+    state: present
+    filename: foreman
+
+- name: Add Foreman Plugins Repo
+  apt_repository:
+    repo: "deb http://deb.theforeman.org/ plugins 3.11"
+    state: present
+    filename: foreman-plugins
+
+- name: Install Foreman Installer
+  apt:
+    name: foreman-installer
+    state: present
+    update_cache: yes
+
+- name: Run Foreman Installer
+  command: >
+    foreman-installer
+    --enable-foreman-proxy
+    --foreman-proxy-tftp=true
+    --foreman-proxy-dhcp=false
+    --foreman-proxy-dns=false
+  args:
+    creates: /etc/foreman/settings.yaml

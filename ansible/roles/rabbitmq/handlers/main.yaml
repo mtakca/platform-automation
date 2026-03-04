@@ -1,0 +1,7 @@
+---
+# RabbitMQ Role Handlers
+
+- name: restart keepalived
+  service:
+    name: keepalived
+    state: restarted

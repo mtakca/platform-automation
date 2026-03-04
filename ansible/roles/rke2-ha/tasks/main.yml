@@ -1,0 +1,20 @@
+---
+# RKE2 HA Role - Main Entry Point
+# Provides: HA Kubernetes cluster with kube-vip VIP
+
+- name: Validate required inventory vars
+  assert:
+    that:
+      - k8s_api_vip is defined
+      - k8s_api_vip | length > 0
+      - k8s_cluster_name is defined
+      - k8s_cluster_name | length > 0
+    fail_msg: "Inventory'de k8s_api_vip ve k8s_cluster_name tanımlı olmalı (k8s_cluster.vars)."
+
+- name: Run master tasks
+  include_tasks: rke2_master.yml
+  when: "'kube_control_plane' in group_names"
+
+- name: Run worker tasks
+  include_tasks: rke2_worker.yml
+  when: "'kube_node' in group_names and 'kube_control_plane' not in group_names"

@@ -1,0 +1,44 @@
+---
+- name: Ensure docker group exists
+  ansible.builtin.group:
+    name: docker
+    state: present
+
+- name: Create swarm user
+  ansible.builtin.user:
+    name: "{{ swarm_user_name }}"
+    password: "{{ swarm_user_password | password_hash('sha512') }}"
+    groups: "{{ swarm_user_groups }}"
+    append: true
+    shell: /bin/bash
+    create_home: true
+    home: "{{ swarm_user_home }}"
+    state: present
+
+- name: Configure sudoers for swarm user
+  ansible.builtin.template:
+    src: sudoers.j2
+    dest: "/etc/sudoers.d/{{ swarm_user_name }}"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "/usr/sbin/visudo -cf %s"
+
+- name: Create data directory
+  ansible.builtin.file:
+    path: "{{ swarm_data_dir }}"
+    state: directory
+    owner: "{{ swarm_user_name }}"
+    group: "{{ swarm_user_name }}"
+    mode: "0755"
+
+- name: Create standard subdirectories
+  ansible.builtin.file:
+    path: "{{ swarm_data_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ swarm_user_name }}"
+    group: "{{ swarm_user_name }}"
+    mode: "0755"
+  loop:
+    - envs
+    - scripts

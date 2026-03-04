@@ -1,0 +1,195 @@
+---
+# Myapp Full Stack Deployment
+# Usage: ansible-playbook playbooks/deploy-myapp.yaml -i inventories/uat/uat.34.myapp.yaml
+#
+# This playbook deploys the ENTIRE Myapp stack from scratch:
+# - Infrastructure: Redis, RabbitMQ, MinIO, MongoDB, Milvus
+# - Docker Swarm: 3 managers + 3 workers with NFS shared storage
+# - Applications: All 8 microservices via Swarm services
+# - Reverse Proxy: Nginx with SSL termination
+# - Monitoring: Promtail, Node Exporter, cAdvisor
+
+###############################################################################
+# PHASE 0: Base Setup (All Hosts)
+###############################################################################
+
+- name: Setup myapp user on all hosts
+  hosts: all
+  become: true
+  roles:
+    - role: myapp/user
+  tags: [base, user]
+
+###############################################################################
+# PHASE 0.5: Disk Setup
+###############################################################################
+
+- name: Mount extra data disks
+  hosts: all
+  become: true
+  roles:
+    - role: mount-data-disks
+  tags: [base, disks]
+
+###############################################################################
+# PHASE 1: Core Infrastructure
+###############################################################################
+
+- name: Deploy Redis Sentinel HA
+  hosts: redis
+  become: true
+  roles:
+    - role: redis
+  tags: [infrastructure, redis]
+
+- name: Deploy RabbitMQ Cluster
+  hosts: rabbitmq
+  become: true
+  serial: 1 # One at a time for cluster join
+  roles:
+    - role: rabbitmq
+  tags: [infrastructure, rabbitmq]
+
+- name: Deploy MinIO Distributed
+  hosts: minio
+  become: true
+  roles:
+    - role: minio
+  tags: [infrastructure, minio]
+
+###############################################################################
+# PHASE 2: Docker Swarm Setup
+###############################################################################
+
+- name: Setup Docker on all swarm nodes
+  hosts: myapp_swarm_all
+  become: true
+  roles:
+    - role: myapp/docker-ce
+      tags: [swarm, docker]
+
+- name: Setup NFS server
+  hosts: myapp_swarm_nfs_server
+  become: true
+  roles:
+    - role: myapp/nfs-server
+      tags: [swarm, nfs, nfs-server]
+
+- name: Setup NFS clients
+  hosts: myapp_swarm_nfs_clients
+  become: true
+  roles:
+    - role: myapp/nfs-client
+      tags: [swarm, nfs, nfs-client]
+
+- name: Initialize swarm on first manager
+  hosts: myapp_swarm_init
+  become: true
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "init"
+      tags: [swarm, swarm-init]
+
+- name: Join additional managers to swarm
+  hosts: myapp_swarm_managers
+  become: true
+  serial: 1 # Join one at a time
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "manager"
+      tags: [swarm, swarm-manager]
+
+- name: Join workers to swarm
+  hosts: myapp_swarm_workers
+  become: true
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "worker"
+      tags: [swarm, swarm-worker]
+
+###############################################################################
+# PHASE 3: Support Services
+###############################################################################
+
+# PostgreSQL HA - Must be run separately with Autobase inventory:
+# ansible-playbook -i inventories/uat/uat.34.myapp.yaml vitabaks.autobase.deploy_pgcluster -e @inventories/uat/uat.34.myapp.yaml
+# Or run: make deploy-postgresql ENV=uat APP=myapp
+
+# Integrated PostgreSQL HA Deployment
+- import_playbook: vitabaks.autobase.deploy_pgcluster
+
+- name: Deploy MongoDB
+  hosts: myapp_mongodb
+  become: true
+  roles:
+    - role: myapp/mongodb
+  tags: [support, mongodb]
+
+- name: Deploy Milvus
+  hosts: myapp_milvus
+  become: true
+  roles:
+    - role: myapp/milvus
+  tags: [support, milvus]
+
+- name: Deploy Nginx
+  hosts: myapp_nginx
+  become: true
+  roles:
+    - role: myapp/nginx
+  tags: [support, nginx]
+
+- name: Deploy ELK Stack
+  hosts: myapp_elk
+  become: true
+  roles:
+    - role: myapp/elk
+  tags: [support, elk]
+
+###############################################################################
+# PHASE 4: Monitoring
+###############################################################################
+
+- name: Setup monitoring server
+  hosts: myapp_monitoring
+  become: true
+  roles:
+    - role: myapp/monitoring-server
+  tags: [monitoring, monitoring-server]
+
+- name: Setup monitoring clients on all swarm nodes
+  hosts: myapp_swarm_managers_all[0]
+  become: true
+  roles:
+    - role: myapp/monitoring-client
+  tags: [monitoring, monitoring-client]
+
+###############################################################################
+# PHASE 5: Application Services
+###############################################################################
+
+- name: Login to ACR on all swarm nodes
+  hosts: myapp_swarm_all
+  become: true
+  tasks:
+    - name: Login to Azure Container Registry
+      ansible.builtin.shell: |
+        echo "{{ default_password }}" | docker login {{ acr_registry }} -u {{ acr_username }} --password-stdin
+      no_log: true
+      changed_when: false
+      when: default_password | default('') | length > 0
+      retries: 3
+      delay: 10
+      register: acr_login
+      until: acr_login.rc == 0
+  tags: [application, services, deploy]
+
+- name: Deploy application services
+  hosts: myapp_swarm_init
+  become: true
+  roles:
+    - role: myapp/service-deploy
+  tags: [application, services, deploy]

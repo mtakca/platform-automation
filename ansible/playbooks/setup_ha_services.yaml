@@ -1,0 +1,7 @@
+---
+- import_playbook: deploy-haproxy.yaml
+- import_playbook: deploy-postgresql-autobase.yaml
+- import_playbook: deploy-redis.yaml
+- import_playbook: deploy-minio.yaml
+- import_playbook: deploy-kafka.yaml
+- import_playbook: deploy-couchbase.yaml

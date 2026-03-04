@@ -1,0 +1,35 @@
+---
+# OPNsense Configuration Defaults
+# All network values MUST be provided via inventory - no hardcoded IPs
+
+# OPNsense API connection
+opnsense_api_url: "https://{{ opnsense_host | mandatory }}/api"
+opnsense_api_key: "{{ vault_opnsense_api_key | mandatory }}"
+opnsense_api_secret: "{{ vault_opnsense_api_secret | mandatory }}"
+opnsense_verify_ssl: false
+
+# Network topology - must be defined in inventory
+# Example structure:
+# opnsense_vlans:
+#   myapp:
+#     interface: "OPT1"
+#     network: "{{ networks.myapp.cidr }}"
+#     gateway: "{{ networks.myapp.gateway }}"
+#   myapp:
+#     interface: "OPT2"
+#     ...
+opnsense_vlans: "{{ opnsense_network_topology | default({}) }}"
+
+# WAN Configuration - must be defined in inventory
+opnsense_wan: "{{ opnsense_wan_config | mandatory }}"
+
+# Kubernetes CIDRs (for firewall rules) - standard values
+k8s_pod_cidr: "10.0.X.X/16"
+k8s_service_cidr: "10.0.X.X/12"
+
+# Firewall rules - must be defined in inventory
+# opnsense_firewall_rules: []
+opnsense_default_rules: "{{ opnsense_firewall_rules | default([]) }}"
+
+# NAT Rules - must be defined in inventory
+opnsense_nat_rules: "{{ opnsense_nat_config | default([]) }}"

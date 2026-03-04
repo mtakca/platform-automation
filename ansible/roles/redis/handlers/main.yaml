@@ -1,0 +1,15 @@
+---
+- name: restart redis
+  service:
+    name: redis-server
+    state: restarted
+
+- name: restart redis-sentinel
+  service:
+    name: redis-sentinel
+    state: restarted
+
+- name: reload apparmor
+  service:
+    name: apparmor
+    state: reloaded

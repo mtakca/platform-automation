@@ -1,0 +1,25 @@
+- name: Create Rancher cert directory
+  file:
+    path: "{{ rancher_certs_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Write Rancher TLS certificate
+  no_log: true
+  copy:
+    dest: "{{ rancher_certs_dir }}/cert.pem"
+    content: "{{ rancher_tls_cert_b64 | b64decode }}"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Write Rancher TLS private key
+  no_log: true
+  copy:
+    dest: "{{ rancher_certs_dir }}/key.pem"
+    content: "{{ rancher_tls_key_b64 | b64decode }}"
+    owner: root
+    group: root
+    mode: '0600'

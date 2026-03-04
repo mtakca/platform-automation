@@ -1,0 +1,16 @@
+---
+# NFS server IP
+nfs_server_ip: ""
+
+# Remote export path
+nfs_export_path: "/home/myapp/data"
+
+# Local mount point
+nfs_mount_path: "/home/myapp/data"
+
+# Mount options
+nfs_mount_options: "rw,sync,hard,intr"
+
+# Create symlink if mount path differs from /home/myapp/data
+nfs_create_symlink: false
+nfs_symlink_path: "/home/myapp/data"

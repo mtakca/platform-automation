@@ -1,0 +1,6 @@
+---
+- name: Setup Couchbase
+  hosts: couchbase
+  become: yes
+  roles:
+    - couchbase

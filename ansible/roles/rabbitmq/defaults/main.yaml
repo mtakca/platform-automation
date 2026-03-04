@@ -1,0 +1,39 @@
+---
+# RabbitMQ Role Defaults (Myapp Production)
+
+rabbitmq_image_tag: "3.13-management-alpine"
+
+# Admin user
+rabbitmq_admin_user: "admin"
+rabbitmq_admin_password: "{{ vault_rabbitmq_admin_password | default('DefaultPassword123!') }}"
+
+# Application user/vhost
+rabbitmq_app_user: "myapp"
+rabbitmq_app_password: "{{ vault_rabbitmq_app_password | default('DefaultPassword123!') }}"
+rabbitmq_vhost: "myapp"
+
+# Data directory - EXTERNAL DISK
+rabbitmq_data_dir: "/mnt/data01/rabbitmq"
+
+# Cluster settings
+rabbitmq_erlang_cookie: "{{ vault_rabbitmq_cookie | default('MYAPP_RABBITMQ_CLUSTER_SECRET') }}"
+rabbitmq_cluster_nodes: "{{ groups['rabbitmq'] | default([]) | map('extract', hostvars, 'ansible_host') | list }}"
+rabbitmq_is_ha: "{{ groups['rabbitmq'] | default([]) | length > 1 }}"
+rabbitmq_cluster_master: "{{ groups['rabbitmq'] | default([inventory_hostname]) | first }}"
+
+# Ports
+rabbitmq_management_port: 15672
+rabbitmq_amqp_port: 5672
+
+# Memory/Disk limits
+rabbitmq_vm_memory_high_watermark: 0.6
+rabbitmq_disk_free_limit: "1GB"
+
+# Keepalived (HA)
+rabbitmq_keepalived_enabled: true
+rabbitmq_keepalived_interface: "ens192"
+# VRID should be defined in inventory, fallback to 80 if not set
+keepalived_vrid: "{{ hostvars[inventory_hostname]['keepalived_vrid'] | default(80) }}"
+keepalived_priority: "{{ 100 - (groups['rabbitmq'].index(inventory_hostname) * 10) }}"
+# VIP should be defined in inventory
+keepalived_vip: "{{ hostvars[inventory_hostname]['keepalived_vip'] | default('10.0.X.X') }}"

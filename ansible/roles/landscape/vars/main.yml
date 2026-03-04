@@ -1,0 +1,7 @@
+landscape_packages:
+  - wget
+  - apache2
+  - postgresql
+  - landscape-server-quickstart
+landscape_service_name: apache2
+landscape_answers_path: /tmp/landscape-answers.conf

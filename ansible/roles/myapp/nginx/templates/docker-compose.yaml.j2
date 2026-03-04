@@ -1,0 +1,10 @@
+services:
+  nginx:
+    image: {{ nginx_image }}
+    container_name: nginx
+    restart: always
+    ports:
+      - {{ nginx_port }}:80
+    volumes:
+      - ./nginx_data/conf.d:/etc/nginx/conf.d
+      - {{ nginx_static_dir }}:/static

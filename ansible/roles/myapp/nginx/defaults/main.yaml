@@ -1,0 +1,17 @@
+---
+# Nginx settings
+nginx_image: "nginx:latest"
+nginx_data_dir: "/home/myapp/nginx"
+nginx_static_dir: "/home/myapp/static"
+nginx_port: 443
+nginx_client_max_body_size: "1000M"
+
+# SSL settings
+nginx_ssl_enabled: true
+# nginx_ssl_cert_src: ""  # Set in inventory - path to local cert file
+# nginx_ssl_key_src: ""   # Set in inventory - path to local key file
+
+# Backend settings (set in inventory)
+nginx_server_name: ""
+nginx_backend_host: ""
+nginx_backend_port: 8000

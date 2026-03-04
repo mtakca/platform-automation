@@ -1,0 +1,58 @@
+---
+# Reset Wallet K8s cluster and fix DNS for kube-vip
+# Run this before retrying Kubespray after a failed kubeadm init
+
+- name: Reset Wallet K8s Cluster
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Run kubeadm reset
+      ansible.builtin.command: kubeadm reset -f
+      register: reset_result
+      failed_when: false
+      changed_when: reset_result.rc == 0
+
+    - name: Stop kubelet
+      ansible.builtin.systemd:
+        name: kubelet
+        state: stopped
+      failed_when: false
+
+    - name: Remove kubernetes manifests
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/kubernetes/manifests
+        - /etc/kubernetes/pki
+        - /etc/kubernetes/admin.conf
+        - /etc/kubernetes/kubelet.conf
+        - /etc/kubernetes/controller-manager.conf
+        - /etc/kubernetes/scheduler.conf
+        - /var/lib/kubelet/pki
+
+    - name: Clean CNI state
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/cni/net.d
+        - /var/lib/calico
+        - /run/calico
+
+    - name: Add lb-apiserver.kubernetes.local to /etc/hosts
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        regexp: '.*lb-apiserver\.kubernetes\.local.*'
+        line: "10.0.X.X lb-apiserver.kubernetes.local"
+        state: present
+
+    - name: Verify /etc/hosts entry
+      ansible.builtin.command: grep lb-apiserver /etc/hosts
+      register: hosts_check
+      changed_when: false
+
+    - name: Show hosts entry
+      ansible.builtin.debug:
+        msg: "{{ hosts_check.stdout }}"

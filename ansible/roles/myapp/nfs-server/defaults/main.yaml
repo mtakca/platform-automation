@@ -1,0 +1,13 @@
+---
+# NFS server export path - EXTERNAL DISK MOUNT
+nfs_export_path: "/mnt/data01/nfs"
+
+# Network CIDR allowed to access NFS (Myapp vNet)
+nfs_allowed_network: "10.0.X.X/24"
+
+# Export options
+nfs_export_options: "rw,sync,no_subtree_check,no_root_squash"
+
+# Owner user
+nfs_owner: "myapp"
+nfs_group: "myapp"

@@ -1,0 +1,63 @@
+---
+# Global Variables for All Hosts
+# Reference: kubespray/inventory/sample/group_vars/all/all.yml
+
+# =============================================================================
+# EXTERNAL DISK CONFIGURATION (Global)
+# Mount point: /mnt/data01 (100GB per node)
+# =============================================================================
+
+# Base data directory for all services
+data_base_dir: "/mnt/data01"
+# Create required directories on first run
+# This is handled by pre-deployment playbook
+
+# =============================================================================
+# TIME SYNCHRONIZATION (NTP)
+# =============================================================================
+ntp_enabled: true
+ntp_servers:
+  - 0.tr.pool.ntp.org
+  - 1.tr.pool.ntp.org
+  - 2.tr.pool.ntp.org
+ntp_timezone: "Europe/Istanbul"
+
+# =============================================================================
+# DNS CONFIGURATION
+# Override in environment-specific group_vars (uat/, prod/)
+# =============================================================================
+# dns_servers must be defined in inventories/ENV/group_vars/all/environment.yml
+
+# =============================================================================
+# LOGGING (SYSLOG)
+# =============================================================================
+syslog_enabled: false
+# syslog_server: ""
+# syslog_port: 514
+# syslog_protocol: "udp"  # udp or tcp
+
+# =============================================================================
+# SECURITY HARDENING
+# =============================================================================
+security_harden: true
+security_fail2ban_enabled: true
+security_ssh_password_auth: false
+security_ssh_permit_root: false
+
+# =============================================================================
+# MONITORING AGENT
+# =============================================================================
+node_exporter_enabled: true
+node_exporter_port: 9100
+
+# =============================================================================
+# COMMON PACKAGES
+# =============================================================================
+common_packages:
+  - vim
+  - htop
+  - curl
+  - wget
+  - net-tools
+  - jq
+  - unzip

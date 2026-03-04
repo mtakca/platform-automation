@@ -1,0 +1,47 @@
+---
+# Istio PeerAuthentication: Global Strict mTLS
+# Enforces mutual TLS for ALL pod-to-pod communication cluster-wide.
+# No plaintext traffic allowed — every request must present a valid SPIFFE identity.
+#
+# Prerequisites:
+#   - Istio installed with sidecar injection enabled
+#   - Target namespaces labeled: istio-injection=enabled
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-strict-mtls
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+spec:
+  mtls:
+    mode: STRICT
+---
+# Istio AuthorizationPolicy: Deny All by Default
+# Zero-trust baseline — deny all traffic, then explicitly allow.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-default
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+spec: {} # Empty spec = deny all
+---
+# Istio AuthorizationPolicy: Allow Intra-Namespace Communication
+# Permits traffic only within the same namespace (East-West micro-segmentation).
+# For cross-namespace communication, create explicit allow policies per service.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-same-namespace
+  namespace: istio-system
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+spec:
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            namespaces:
+              - "{{ .Release.Namespace }}"

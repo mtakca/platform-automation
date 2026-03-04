@@ -1,0 +1,29 @@
+---
+- name: Precheck | Fail if no users provided
+  fail:
+    msg: "users_to_create must be defined and not empty"
+  when: users_to_create is not defined or users_to_create | length == 0
+  tags: precheck
+
+- name: Ensure sudo package exists
+  package:
+    name: sudo
+    state: present
+  become: true
+
+# Kullanıcı işlemlerini loop ile çağır
+- name: Include user task set for each user
+  include_tasks: user_block.yml
+  loop: "{{ users_to_create }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Optionally manage sshd_config for PubkeyAuthentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^PubkeyAuthentication\s+'
+    line: 'PubkeyAuthentication yes'
+    backrefs: yes
+  when: manage_sshd | default(false) | bool
+  notify: Restart sshd
+  become: true

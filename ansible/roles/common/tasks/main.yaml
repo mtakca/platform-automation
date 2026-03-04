@@ -1,0 +1,45 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install common packages
+  apt:
+    name: "{{ common_packages }}"
+    state: present
+
+- name: Set timezone
+  timezone:
+    name: "{{ common_timezone }}"
+
+- name: Ensure Chrony is installed and running
+  service:
+    name: chrony
+    state: started
+    enabled: yes
+
+- name: Configure journald for persistence
+  lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: "^Storage="
+    line: "Storage=persistent"
+  notify: restart journald
+
+- name: Deploy EXAMPLE MOTD banner
+  template:
+    src: motd.j2
+    dest: /etc/motd
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Remove default Ubuntu MOTD scripts
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/update-motd.d/10-help-text
+    - /etc/update-motd.d/50-motd-news
+    - /etc/update-motd.d/91-release-upgrade
+  ignore_errors: true

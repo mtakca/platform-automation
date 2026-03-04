@@ -1,0 +1,111 @@
+---
+# Kyverno ClusterPolicy: Enforce Cosign Image Signatures
+# Blocks any Pod deploying an unsigned container image from the internal registry.
+# ADR: Kyverno over OPA/Gatekeeper — native K8s CRDs, no Rego learning curve.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+  annotations:
+    policies.kyverno.io/title: "Verify Image Signatures"
+    policies.kyverno.io/category: "Supply Chain Security"
+    policies.kyverno.io/severity: "high"
+    policies.kyverno.io/description: >-
+      Validates that all container images from the internal Harbor registry
+      are cryptographically signed using Cosign. Unsigned or tampered images
+      are rejected at admission time.
+spec:
+  validationFailureAction: enforce
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-harbor-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "harbor.platform.local/*"
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      -----BEGIN PUBLIC KEY-----
+                      REPLACE_WITH_YOUR_COSIGN_PUBLIC_KEY
+                      -----END PUBLIC KEY-----
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+---
+# Kyverno ClusterPolicy: Require Mandatory Labels
+# Enforces FinOps and operational tagging on all Deployments.
+# Every Deployment must have: owner, cost-center, environment labels.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-mandatory-labels
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+  annotations:
+    policies.kyverno.io/title: "Require Mandatory Labels"
+    policies.kyverno.io/category: "Best Practices"
+    policies.kyverno.io/severity: "medium"
+    policies.kyverno.io/description: >-
+      Ensures all Deployments and StatefulSets have required labels for
+      cost allocation (FinOps) and operational traceability.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: check-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+      validate:
+        message: >-
+          The resource {{request.object.kind}}/{{request.object.metadata.name}}
+          is missing required labels. All Deployments and StatefulSets must have:
+          'owner', 'cost-center', and 'environment' labels.
+        pattern:
+          metadata:
+            labels:
+              owner: "?*"
+              cost-center: "?*"
+              environment: "?*"
+---
+# Kyverno ClusterPolicy: Disallow Latest Tag
+# Prevents mutable image tags. Forces SHA pinning or explicit semver tags.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+  annotations:
+    policies.kyverno.io/title: "Disallow Latest Tag"
+    policies.kyverno.io/category: "Supply Chain Security"
+    policies.kyverno.io/severity: "medium"
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+    - name: validate-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Using ':latest' tag is forbidden. Pin to a specific version or SHA digest."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"

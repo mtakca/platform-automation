@@ -1,0 +1,39 @@
+---
+# Token retrieval for non-init masters and workers
+# Token, her zaman ilk master'dan okunur.
+
+- name: Wait for VIP to be reachable before joining
+  wait_for:
+    host: "{{ k8s_api_vip }}"
+    port: 9345
+    timeout: 300
+    state: started
+
+- name: Wait for token file on first master
+  wait_for:
+    path: /var/lib/rancher/rke2/server/node-token
+    state: present
+    timeout: 600
+  run_once: true
+  delegate_to: "{{ groups['kube_control_plane'][0] }}"
+
+- name: Read RKE2 token from first master
+  command: cat /var/lib/rancher/rke2/server/node-token
+  register: token_raw
+  changed_when: false
+  run_once: true
+  delegate_to: "{{ groups['kube_control_plane'][0] }}"
+
+- name: Set token fact (available for this host execution context)
+  set_fact:
+    rke2_token: "{{ token_raw.stdout }}"
+
+- name: Wait for K8s API via VIP to be responding
+  uri:
+    url: "https://{{ k8s_api_vip }}:6443/readyz"
+    validate_certs: false
+    status_code: [200, 401, 403]
+  register: api_check
+  until: api_check.status in [200, 401, 403]
+  retries: 30
+  delay: 10

@@ -1,0 +1,283 @@
+#!/bin/bash
+
+# ACR Login (Jinja2 templated)
+ACR_REGISTRY="{{ acr_registry }}"
+ACR_USERNAME="{{ acr_username }}"
+ACR_PASSWORD="{{ default_password }}"
+
+{% raw %}
+# Parse command line arguments
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+  --github_pat)
+    github_pat="$2"
+    shift
+    ;;
+  --service)
+    service="$2"
+    shift
+    ;;
+  --image)
+    image="$2"
+    shift
+    ;;
+  --volume)
+    volumes+=("$2")
+    shift
+    ;;
+  --network)
+    networks+=("$2")
+    shift
+    ;;
+  --port)
+    ports+=("$2")
+    shift
+    ;;
+  --service_env_file)
+    service_env_file="$2"
+    shift
+    ;;
+  --resource_env_file)
+    resource_env_file="$2"
+    shift
+    ;;
+  --memory_env_title)
+    memory_env_title="$2"
+    shift
+    ;;
+  --health_check_url)
+    health_check_url="$2"
+    shift
+    ;;
+  --health_check_cmd)
+    health_check_cmd="$2"
+    shift
+    ;;
+  --entry_point_input)
+    entry_point_input="$2"
+    shift
+    ;;
+  --update_order)
+    update_order="$2"
+    shift
+    ;;
+  --replicas)
+    replicas="$2"
+    shift
+    ;;
+  --mode)
+    mode="$2"
+    shift
+    ;;
+  *)
+    echo "Unknown parameter passed: $1"
+    exit 1
+    ;;
+  esac
+  shift
+done
+
+# Check if required arguments are provided
+if [[ -z "$github_pat" || -z "$service" || -z "$image" || -z "$service_env_file" || -z "$resource_env_file" || -z "$memory_env_title" ]]; then
+  echo "Usage: $0 --github_pat <GithubPAT> --service <ServiceName> --image <ImageName> --service_env_file <ServiceEnvFile> --resource_env_file <ResourceEnvFile> --memory_env_title <MemoryEnvTitle>"
+  exit 1
+fi
+
+# Check if any node has the required service label
+nodes_with_label=$(docker node ls --format "{{.ID}}" | xargs -I{} docker node inspect {} --format "{{.ID}} {{ index .Spec.Labels \"$service\" }}" | grep "true" | awk '{print $1}')
+if [[ -z "$nodes_with_label" ]]; then
+  echo "No node found with label \"$service\" set to true. Exiting successfully."
+  exit 0
+fi
+
+docker swarm update --task-history-limit=2
+
+if [ ! -f "$service_env_file" ]; then
+  echo "$service_env_file file not found."
+  exit 1
+fi
+
+if [ -f "$resource_env_file" ]; then
+  source "$resource_env_file"
+else
+  echo "$resource_env_file file not found."
+  exit 1
+fi
+
+if [ -z "${update_order+x}" ]; then
+  update_order="start-first"
+elif [ "$update_order" != "start-first" ] && [ "$update_order" != "stop-first" ]; then
+  echo "Invalid value for --update_order: $update_order. Allowed values are 'start-first' and 'stop-first'."
+  exit 1
+fi
+
+# Default mode to replicated if not specified
+if [ -z "${mode+x}" ]; then
+  mode="replicated"
+fi
+
+# Default replicas to 1 if not specified (only for replicated mode)
+if [ "$mode" == "replicated" ] && [ -z "${replicas+x}" ]; then
+  replicas="1"
+fi
+
+memory_value="${!memory_env_title}"
+
+if [ -z "$memory_value" ]; then
+  echo "Memory value not found for $memory_env_title."
+  exit 1
+fi
+
+health_check_command=""
+if [[ -n "$health_check_url" && -z "$health_check_cmd" ]]; then
+  health_check_command="curl -f $health_check_url || exit 1"
+elif [[ -n "$health_check_cmd" && -z "$health_check_url" ]]; then
+  health_check_command="$health_check_cmd"
+else
+  echo "Error: Please provide either health_check_url or health_check_cmd, not both or none."
+  exit 1
+fi
+
+base_volume_path="/home/myapp/data"
+
+if [ ! -d "$base_volume_path" ]; then
+  echo "Error: $base_volume_path does not exist"
+  exit 1
+fi
+
+mount_options=""
+if [[ ${#volumes[@]} -gt 0 ]]; then
+  for volume in "${volumes[@]}"; do
+    if [ ! -d "$base_volume_path/$service/$volume" ]; then
+      mkdir -p "$base_volume_path/$service/$volume"
+      echo "Created directory: $service/$volume"
+    fi
+    mount_options+=" --mount type=bind,source=$base_volume_path/$service/$volume,target=/$volume"
+  done
+fi
+
+network_options=""
+for network in "${networks[@]}"; do
+  if docker network ls | grep -q "$network"; then
+    echo "Network already exists: $network"
+  else
+    echo "Creating network: $network"
+    docker network create --driver overlay --attachable "$network"
+  fi
+  network_options+=" --network $network"
+done
+{% endraw %}
+
+# ACR Login using templated credentials
+echo "$ACR_PASSWORD" | docker login "$ACR_REGISTRY" -u "$ACR_USERNAME" --password-stdin
+
+{% raw %}
+if docker service ls | grep -q "$service"; then
+  echo "Service $service exists, updating..."
+  mapfile -t env_vars < <(grep -v '^#' "$service_env_file")
+ 
+  update_cmd="docker service update --limit-memory=\"$memory_value\""
+
+  if [ "$mode" == "replicated" ]; then
+    update_cmd+=" --replicas $replicas"
+  fi
+
+  for var in "${env_vars[@]}"; do
+    update_cmd+=" --env-add \"$var\""
+  done
+
+  update_cmd+=" --health-cmd=\"$health_check_command\""
+  update_cmd+=" --health-interval=30s"
+  update_cmd+=" --health-retries=3"
+  update_cmd+=" --health-start-period=10s"
+  update_cmd+=" --health-timeout=10s"
+
+  exiting_ports=$(docker service inspect --format '{{ range .Endpoint.Ports }}{{ .PublishedPort }}:{{ .TargetPort }} {{ end }}' "$service")
+  for exiting_port in $exiting_ports; do
+    port_found=false
+    for port in "${ports[@]}"; do
+      if [ "$exiting_port" == "$port" ]; then
+        port_found=true
+        break
+      fi
+    done
+    if [ "$port_found" = false ]; then
+      update_cmd+=" --publish-rm \"$exiting_port\""
+    fi
+  done
+
+  for port in "${ports[@]}"; do
+    update_cmd+=" --publish-add $port"
+  done
+
+  exiting_mounts=$(docker service inspect --format '{{ range .Spec.TaskTemplate.ContainerSpec.Mounts }}{{ .Target }} {{ end }}' "$service")
+  for existing_mount in $exiting_mounts; do
+    existing_mount_clean="${existing_mount#/}"
+    existing_mount_clean="${existing_mount_clean%/}"
+    mount_found=false
+    for volume in "${volumes[@]}"; do
+      volume_clean="${volume#/}"
+      volume_clean="${volume_clean%/}"
+      if [ "$existing_mount_clean" == "$volume_clean" ]; then
+        mount_found=true
+        break
+      fi
+    done
+    if [ "$mount_found" = false ]; then
+      update_cmd+=" --mount-rm \"$existing_mount\""
+    fi
+  done
+
+  for volume in "${volumes[@]}"; do
+    update_cmd+=" --mount-add type=bind,source=$base_volume_path/$service/$volume,target=/$volume"
+  done
+
+  if [ -v entry_point_input ]; then
+    update_cmd+=" --args \"$entry_point_input\""
+  fi
+
+  update_cmd+=" --update-delay 10s"
+  update_cmd+=" --update-order \"$update_order\""
+  update_cmd+=" --update-failure-action=rollback"
+  update_cmd+=" --with-registry-auth"
+  update_cmd+=" --image \"$image\""
+  update_cmd+=" \"$service\""
+
+  eval "$update_cmd"
+else
+  echo "Service $service does not exist, creating..."
+
+  create_cmd="docker service create --limit-memory=\"$memory_value\""
+
+  create_cmd+=" --health-cmd=\"$health_check_command\""
+  create_cmd+=" --health-interval=30s"
+  create_cmd+=" --health-retries=3"
+  create_cmd+=" --health-start-period=10s"
+  create_cmd+=" --health-timeout=10s"
+
+  for port in "${ports[@]}"; do
+    create_cmd+=" --publish $port"
+  done
+
+  create_cmd+=" --with-registry-auth"
+  create_cmd+=" --env-file \"$service_env_file\""
+  create_cmd+=" $network_options"
+  create_cmd+=" $mount_options"
+  create_cmd+=" --mode $mode"
+
+  if [ "$mode" == "replicated" ]; then
+    create_cmd+=" --replicas $replicas"
+  fi
+
+  create_cmd+=" --constraint \"node.labels.$service == true\""
+
+  create_cmd+=" --name \"$service\""
+  create_cmd+=" \"$image\""
+
+  if [ -v entry_point_input ]; then
+    create_cmd+=" \"$entry_point_input\""
+  fi
+
+  eval "$create_cmd"
+fi
+{% endraw %}

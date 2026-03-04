@@ -1,0 +1,27 @@
+---
+# Redis Role Defaults (Myapp Production)
+
+# Detect single node vs HA mode
+redis_node_count: "{{ groups['redis'] | default([]) | length }}"
+redis_is_ha: "{{ groups['redis'] | default([]) | length > 1 }}"
+
+# Authentication
+redis_password: "{{ vault_redis_password | default('DefaultPassword123!') }}"
+
+# Data directories - EXTERNAL DISK
+redis_data_dir: "/mnt/data01/redis"
+redis_log_dir: "/mnt/data01/redis/logs"
+
+# For HA mode: first node is master
+redis_master_ip: "{{ hostvars[groups['redis'][0]]['ansible_host'] if groups['redis'] | default([]) | length > 0 else '127.0.0.1' }}"
+
+# Sentinel settings
+redis_sentinel_quorum: 2
+redis_sentinel_failover_timeout: 60000
+redis_sentinel_down_after: 5000
+
+# Keepalived
+redis_keepalived_interface: "ens192"
+# VRID should be defined in inventory, fallback to 90 if not set
+keepalived_vrid: "{{ hostvars[inventory_hostname]['keepalived_vrid'] | default(90) }}"
+keepalived_priority: "{{ 100 - (groups['redis'].index(inventory_hostname) * 10) }}"

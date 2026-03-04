@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'App'
+    honor_labels: true
+    dockerswarm_sd_configs:
+      - host: tcp://{{ prometheus_swarm_manager_ip }}:2375
+        role: nodes
+    relabel_configs:
+      - &id001
+        source_labels: [__meta_dockerswarm_node_availability]
+        regex: active
+        action: keep
+      - &id002
+        source_labels: [__meta_dockerswarm_node_status]
+        regex: ready
+        action: keep
+      - &id003
+        source_labels: [__meta_dockerswarm_node_hostname]
+        target_label: instance
+        regex: (.*)
+        replacement: Node-$1
+        action: replace
+      - source_labels: [__meta_dockerswarm_node_address]
+        target_label: __address__
+        regex: (.*)
+        replacement: $1:9100
+        action: replace
+
+  - job_name: 'Cadvisor'
+    dockerswarm_sd_configs:
+      - host: tcp://{{ prometheus_swarm_manager_ip }}:2375
+        role: nodes
+    relabel_configs:
+      - *id001
+      - *id002
+      - *id003
+      - source_labels: [__meta_dockerswarm_node_address]
+        target_label: __address__
+        regex: (.*)
+        replacement: $1:8080
+        action: replace
+
+  - job_name: 'MonitoringServer'
+    static_configs:
+      - targets: ['node_exporter:9100']
+
+{% for target in prometheus_additional_targets %}
+  - job_name: '{{ target.name }}'
+    static_configs:
+      - targets: {{ target.endpoints | to_json }}
+{% endfor %}

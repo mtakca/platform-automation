@@ -1,0 +1,16 @@
+landscape_packages:
+  - landscape-server
+  - postgresql
+  - python3-psycopg2
+
+landscape_db_name: "landscape"
+landscape_db_user: "landscape"
+landscape_service_name: "apache2"
+landscape_answers_path: "/tmp/landscape-answers.conf"
+
+landscape_admin_email: "admin@preprod.example_tenant.local"
+landscape_admin_password: "{{ vault_landscape_admin_password }}"
+landscape_hostname: "landscape-preprod.example_tenant.local"
+
+landscape_use_ssl: false
+landscape_version: "24.04"

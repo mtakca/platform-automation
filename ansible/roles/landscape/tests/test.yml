@@ -1,0 +1,4 @@
+- hosts: landscape
+  become: yes
+  roles:
+    - landscape

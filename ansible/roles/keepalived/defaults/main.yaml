@@ -1,0 +1,23 @@
+# Global Defaults
+keepalived_router_id_global: "{{ inventory_hostname }}"
+
+# VRRP Check Scripts - use inventory variable if defined
+keepalived_scripts:
+  - name: chk_service
+    script: "{{ keepalived_check_script | mandatory }}"
+    interval: 2
+    weight: 2
+
+# VRRP Instances - use inventory variables (all required, no hardcoded defaults)
+keepalived_instances:
+  - name: VI_{{ keepalived_vrid | mandatory }}
+    state: "{{ 'MASTER' if keepalived_priority | default(100) >= 100 else 'BACKUP' }}"
+    interface: "{{ keepalived_interface | default('ens192') }}"
+    virtual_router_id: "{{ keepalived_vrid | mandatory }}"
+    priority: "{{ keepalived_priority | default(100) }}"
+    advert_int: 1
+    auth_pass: "{{ keepalived_vrid | mandatory }}"
+    virtual_ipaddresses:
+      - "{{ keepalived_vip | mandatory }}"
+    track_scripts:
+      - chk_service

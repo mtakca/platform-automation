@@ -1,0 +1,19 @@
+---
+# Swarm operation mode: init | manager | worker
+swarm_mode: "init"
+
+# Manager IP (required for manager/worker modes)
+swarm_manager_ip: ""
+
+# Join tokens (auto-fetched for init, required for manager/worker)
+swarm_manager_token: ""
+swarm_worker_token: ""
+
+# Node labels to apply (list of label keys, values default to true)
+swarm_labels: []
+
+# Swarm advertise address (defaults to ansible_default_ipv4.address)
+swarm_advertise_addr: "{{ ansible_default_ipv4.address }}"
+
+# Swarm task history limit
+swarm_task_history_limit: 2

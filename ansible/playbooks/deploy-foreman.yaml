@@ -1,0 +1,7 @@
+---
+- name: Deploy Foreman
+  hosts: foreman
+  become: true
+  roles:
+    - common
+    - foreman

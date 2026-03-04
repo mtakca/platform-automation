@@ -1,0 +1,18 @@
+---
+# Base paths
+monitoring_client_data_dir: "/home/myapp/data"
+monitoring_client_compose_dir: "/home/myapp/monitoring"
+
+# Image versions (pinned)
+monitoring_promtail_image: "grafana/promtail:3.4.2"
+monitoring_node_exporter_image: "prom/node-exporter:v1.9.1"
+monitoring_cadvisor_image: "gcr.io/cadvisor/cadvisor:v0.49.1"
+
+# Monitoring server IP (dynamic from inventory)
+monitoring_server_ip: "{{ hostvars[groups['myapp_monitoring'][0]]['ansible_host'] | default('127.0.0.1') }}"
+
+# Loki push endpoint
+loki_push_url: "http://{{ monitoring_server_ip }}:3100/loki/api/v1/push"
+
+# Region label (used by Promtail)
+promtail_region: "Myapp"

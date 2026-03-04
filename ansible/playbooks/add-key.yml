@@ -1,0 +1,7 @@
+---
+- name: Add SSH key & create passwordless sudo user
+  hosts: all            # inventory dosyasındaki bütün hostlar veya bir grup (bkz. komut satırı)
+  become: yes
+  gather_facts: false
+  roles:
+    - add_ssh_key

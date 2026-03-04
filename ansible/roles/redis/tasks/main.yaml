@@ -1,0 +1,141 @@
+---
+- name: Install Redis
+  apt:
+    name: redis-server
+    state: present
+    update_cache: yes
+
+- name: Install Redis Sentinel (HA mode only)
+  apt:
+    name: redis-sentinel
+    state: present
+  when: redis_is_ha | bool
+
+- name: Stop Redis for configuration
+  service:
+    name: redis-server
+    state: stopped
+
+- name: Create Redis data directory
+  file:
+    path: "{{ redis_data_dir }}"
+    state: directory
+    owner: redis
+    group: redis
+    mode: "0755"
+
+- name: Create Redis log directory
+  file:
+    path: "{{ redis_log_dir }}"
+    state: directory
+    owner: redis
+    group: redis
+    mode: "0755"
+
+- name: Configure Redis
+  template:
+    src: redis.conf.j2
+    dest: /etc/redis/redis.conf
+    owner: redis
+    group: redis
+    mode: "0640"
+  notify: restart redis
+
+- name: Configure Redis Sentinel (HA mode only)
+  template:
+    src: sentinel.conf.j2
+    dest: /etc/redis/sentinel.conf
+    owner: redis
+    group: redis
+    mode: "0640"
+  notify: restart redis-sentinel
+  when: redis_is_ha | bool
+
+- name: Check if AppArmor is installed
+  stat:
+    path: /etc/apparmor.d/usr.bin.redis-server
+  register: redis_apparmor_profile
+
+- name: Configure AppArmor for custom Redis directories
+  block:
+    - name: Ensure AppArmor local override directory exists
+      file:
+        path: /etc/apparmor.d/local
+        state: directory
+        mode: "0755"
+
+    - name: Allow Redis to access custom directories in AppArmor
+      copy:
+        dest: /etc/apparmor.d/local/usr.bin.redis-server
+        content: |
+          # Allow access to custom data directories
+          {{ redis_data_dir }}/ r,
+          {{ redis_data_dir }}/** rwk,
+          {% if redis_log_dir != redis_data_dir %}
+          {{ redis_log_dir }}/ r,
+          {{ redis_log_dir }}/** rwk,
+          {% endif %}
+        owner: root
+        group: root
+        mode: "0644"
+      notify: reload apparmor
+  when: redis_apparmor_profile.stat.exists
+
+- name: Ensure systemd override directory exists for Redis
+  file:
+    path: /etc/systemd/system/redis-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure systemd ReadWritePaths for Redis
+  copy:
+    dest: /etc/systemd/system/redis-server.service.d/override.conf
+    content: |
+      [Service]
+      ReadWritePaths=-{{ redis_data_dir }}
+      ReadWritePaths=-{{ redis_log_dir }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart redis
+
+- name: Ensure systemd override directory exists for Redis Sentinel
+  file:
+    path: /etc/systemd/system/redis-sentinel.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: redis_is_ha | bool
+
+- name: Configure systemd ReadWritePaths for Redis Sentinel
+  copy:
+    dest: /etc/systemd/system/redis-sentinel.service.d/override.conf
+    content: |
+      [Service]
+      ReadWritePaths=-{{ redis_data_dir }}
+      ReadWritePaths=-{{ redis_log_dir }}
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart redis-sentinel
+  when: redis_is_ha | bool
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Enable Redis server
+  service:
+    name: redis-server
+    state: started
+    enabled: yes
+
+- name: Enable Redis Sentinel (HA mode only)
+  service:
+    name: redis-sentinel
+    state: started
+    enabled: yes
+  when: redis_is_ha | bool

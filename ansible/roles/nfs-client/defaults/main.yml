@@ -1,0 +1,5 @@
+---
+# NFS Client defaults - server IP must be provided via inventory
+nfs_server_ip: "{{ nfs_server | mandatory }}"
+nfs_export_path: "{{ nfs_remote_path | default('/mnt/data01/nfs') }}"
+nfs_mount_path: "{{ nfs_local_path | default('/mnt/nfs') }}"

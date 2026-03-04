@@ -1,0 +1,92 @@
+---
+# remount-disks.yaml
+# Moves mount from /data01 to /mnt/data01
+# Usage: ansible-playbook -i inventories/uat/uat.34.myapp.yaml playbooks/remount-disks.yaml --become
+
+- name: Remount Data Disks to /mnt/data01
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Check if /data01 is mounted
+      ansible.builtin.command: findmnt -n -o SOURCE /data01
+      register: old_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Stop services that might use the disk
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+      loop:
+        - redis-server
+        - redis-sentinel
+        - rabbitmq-server
+        - postgresql
+        - patroni
+        - minio
+      failed_when: false
+      when: old_mount.rc == 0
+
+    - name: Get device from old mount
+      ansible.builtin.set_fact:
+        disk_device: "{{ old_mount.stdout }}"
+      when: old_mount.rc == 0 and old_mount.stdout != ""
+
+    - name: Unmount /data01
+      ansible.posix.mount:
+        path: /data01
+        state: unmounted
+      when: old_mount.rc == 0 and old_mount.stdout != ""
+
+    - name: Remove old fstab entry for /data01
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: "/data01"
+        state: absent
+      when: old_mount.rc == 0
+
+    - name: Create /mnt/data01 directory
+      ansible.builtin.file:
+        path: /mnt/data01
+        state: directory
+        mode: "0755"
+
+    - name: Get UUID of disk
+      ansible.builtin.command: blkid -s UUID -o value {{ disk_device }}
+      register: disk_uuid
+      changed_when: false
+      when: disk_device is defined and disk_device != ""
+
+    - name: Add new fstab entry for /mnt/data01
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: "^UUID={{ disk_uuid.stdout }}"
+        line: "UUID={{ disk_uuid.stdout }} /mnt/data01 ext4 defaults,nofail,x-systemd.device-timeout=45 0 0"
+        state: present
+      when: disk_uuid is defined and disk_uuid.stdout is defined and disk_uuid.stdout != ""
+
+    - name: Mount /mnt/data01
+      ansible.posix.mount:
+        path: /mnt/data01
+        src: "UUID={{ disk_uuid.stdout }}"
+        fstype: ext4
+        opts: defaults,nofail,x-systemd.device-timeout=45
+        state: mounted
+      when: disk_uuid is defined and disk_uuid.stdout is defined and disk_uuid.stdout != ""
+
+    - name: Remove old /data01 directory if empty
+      ansible.builtin.file:
+        path: /data01
+        state: absent
+      failed_when: false
+
+    - name: Display new mount
+      ansible.builtin.command: df -h /mnt/data01
+      register: new_mount
+      changed_when: false
+      failed_when: false
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ new_mount.stdout_lines | default(['Mount not available']) }}"

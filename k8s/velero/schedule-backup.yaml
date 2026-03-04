@@ -1,0 +1,60 @@
+---
+# Velero Hourly Backup Schedule
+# Snapshots critical namespaces to off-cluster MinIO S3 bucket.
+# RPO: 1 hour | Retention: 7 days
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: cluster-hourly-backup
+  namespace: velero
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+spec:
+  schedule: "0 * * * *"
+  template:
+    includedNamespaces:
+      - default
+      - argocd
+      - crossplane-system
+      - velero
+      - monitoring
+    excludedResources:
+      - events
+      - events.events.k8s.io
+    ttl: 168h0m0s
+    snapshotVolumes: true
+    storageLocation: minio-dr-vault
+    volumeSnapshotLocations:
+      - minio-dr-vault
+    defaultVolumesToFsBackup: false
+    metadata:
+      labels:
+        backup-type: scheduled
+        frequency: hourly
+---
+# Velero Daily Full Backup — All Namespaces
+# Broader nightly backup covering everything, longer retention.
+# RPO: 24 hours | Retention: 30 days
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: cluster-daily-full-backup
+  namespace: velero
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+spec:
+  schedule: "0 2 * * *"
+  template:
+    includedNamespaces:
+      - "*"
+    excludedNamespaces:
+      - kube-system
+      - kube-public
+    ttl: 720h0m0s
+    snapshotVolumes: true
+    storageLocation: minio-dr-vault
+    defaultVolumesToFsBackup: true
+    metadata:
+      labels:
+        backup-type: scheduled
+        frequency: daily

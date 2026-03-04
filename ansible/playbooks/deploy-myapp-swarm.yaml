@@ -1,0 +1,114 @@
+---
+# Deploy Myapp Docker Swarm Cluster
+# Usage: ansible-playbook playbooks/deploy-myapp-swarm.yaml -i inventories/uat/myapp/swarm/hosts.yaml
+
+###############################################################################
+# Phase 1: Base Setup (All Nodes)
+###############################################################################
+- name: Setup base infrastructure on all swarm nodes
+  hosts: myapp_swarm_all
+  become: true
+  roles:
+    - role: myapp/user
+      tags: [user]
+    - role: myapp/docker-ce
+      tags: [docker]
+
+###############################################################################
+# Phase 2: NFS Setup
+###############################################################################
+- name: Setup NFS server
+  hosts: myapp_swarm_nfs_server
+  become: true
+  roles:
+    - role: myapp/nfs-server
+      tags: [nfs, nfs-server]
+
+- name: Setup NFS clients
+  hosts: myapp_swarm_nfs_clients
+  become: true
+  roles:
+    - role: myapp/nfs-client
+      tags: [nfs, nfs-client]
+
+###############################################################################
+# Phase 3: Swarm Cluster Formation
+###############################################################################
+- name: Initialize swarm on first manager
+  hosts: myapp_swarm_init
+  become: true
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "init"
+      tags: [swarm, swarm-init]
+
+- name: Join additional managers to swarm
+  hosts: myapp_swarm_managers
+  become: true
+  serial: 1 # Join one at a time
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "manager"
+      tags: [swarm, swarm-manager]
+
+- name: Join workers to swarm
+  hosts: myapp_swarm_workers
+  become: true
+  roles:
+    - role: myapp/docker-swarm
+      vars:
+        swarm_mode: "worker"
+      tags: [swarm, swarm-worker]
+
+###############################################################################
+# Phase 4: Monitoring
+###############################################################################
+- name: Setup monitoring server
+  hosts: myapp_swarm_monitoring_server
+  become: true
+  roles:
+    - role: myapp/monitoring-server
+      tags: [monitoring, monitoring-server]
+
+- name: Setup monitoring clients
+  hosts: myapp_swarm_managers[0]
+  become: true
+  roles:
+    - role: myapp/monitoring-client
+      tags: [monitoring, monitoring-client]
+
+###############################################################################
+# Phase 5: Support Services
+###############################################################################
+- name: Setup MongoDB
+  hosts: myapp_swarm_mongodb
+  become: true
+  roles:
+    - role: myapp/mongodb
+      tags: [mongodb]
+
+- name: Setup Milvus
+  hosts: myapp_swarm_milvus
+  become: true
+  roles:
+    - role: myapp/milvus
+      tags: [milvus]
+
+- name: Setup Nginx
+  hosts: myapp_swarm_nginx
+  become: true
+  roles:
+    - role: myapp/nginx
+      tags: [nginx]
+
+###############################################################################
+# Phase 6: Application Services
+###############################################################################
+- name: Deploy application services
+  hosts: myapp_swarm_managers[0]
+  become: true
+  roles:
+    - role: myapp/service-deploy
+      tags: [services, deploy]

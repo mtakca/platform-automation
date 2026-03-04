@@ -1,0 +1,23 @@
+---
+- name: Setup Bastion Host
+  hosts: bastion
+  become: true
+  roles:
+    - bastion
+
+- name: Setup Foreman
+  hosts: foreman
+  become: true
+  roles:
+    - foreman
+
+- name: Setup Landscape
+  hosts: landscape
+  become: true
+  roles:
+    - landscape
+
+- name: Setup WSUS
+  hosts: wsus
+  roles:
+    - wsus

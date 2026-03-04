@@ -1,0 +1,17 @@
+---
+ansible-navigator:
+  ansible:
+    inventories:
+      - inventories/uat
+      - inventories/prod
+  execution-environment:
+    container-engine: podman
+    enabled: true
+    image: quay.io/ansible/awx-ee:latest
+    pull:
+      policy: missing
+  logging:
+    level: debug
+  playbook-artifact:
+    enable: true
+    save-as: logs/{playbook_name}-artifact-{time_stamp}.json

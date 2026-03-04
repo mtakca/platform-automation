@@ -1,0 +1,64 @@
+---
+# Fix DNS Nameservers on All UAT Hosts
+# Usage: ansible-playbook -i inventories/uat/combined_hosts.yaml playbooks/fix-dns-nameservers.yaml
+
+- name: Update DNS Nameservers on All UAT Hosts
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    dns_servers:
+      - 8.8.8.8
+      - 10.0.X.X
+
+  tasks:
+    - name: Get current netplan config file
+      ansible.builtin.find:
+        paths: /etc/netplan
+        patterns: "*.yaml"
+      register: netplan_files
+
+    - name: Read current netplan config
+      ansible.builtin.slurp:
+        src: "{{ netplan_files.files[0].path }}"
+      register: current_netplan
+      when: netplan_files.files | length > 0
+
+    - name: Parse current netplan
+      ansible.builtin.set_fact:
+        netplan_config: "{{ current_netplan.content | b64decode | from_yaml }}"
+      when: current_netplan is defined and current_netplan.content is defined
+
+    - name: Get primary interface name
+      ansible.builtin.set_fact:
+        primary_interface: "{{ netplan_config.network.ethernets.keys() | list | first }}"
+      when: netplan_config is defined
+
+    - name: Get current IP address
+      ansible.builtin.set_fact:
+        current_ip: "{{ netplan_config.network.ethernets[primary_interface].addresses[0] }}"
+        current_gateway: "{{ netplan_config.network.ethernets[primary_interface].routes[0].via | default(ansible_default_ipv4.gateway) }}"
+      when: netplan_config is defined and primary_interface is defined
+
+    - name: Update netplan with correct DNS
+      ansible.builtin.copy:
+        dest: "{{ netplan_files.files[0].path }}"
+        content: |
+          network:
+            version: 2
+            ethernets:
+              {{ primary_interface }}:
+                addresses:
+                  - {{ current_ip }}
+                routes:
+                  - to: default
+                    via: {{ current_gateway }}
+                nameservers:
+                  addresses: {{ dns_servers | to_json }}
+        mode: "0600"
+      register: netplan_updated
+
+    - name: Apply netplan changes
+      ansible.builtin.command: netplan apply
+      when: netplan_updated.changed

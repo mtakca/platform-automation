@@ -1,0 +1,37 @@
+---
+- name: Remove authorized key for {{ item.name }}
+  authorized_key:
+    user: "{{ item.name }}"
+    key: "{{ item.ssh_pubkey }}"
+    state: absent
+  become: true
+  ignore_errors: true  # kullanıcı yoksa bile hata verme
+
+- name: Remove sudoers file for {{ item.name }}
+  file:
+    path: "/etc/sudoers.d/{{ item.name }}"
+    state: absent
+  become: true
+  ignore_errors: true
+
+# ✅ Eğer dosya hala varsa visudo ile doğrula, yoksa geç
+- name: Validate sudoers file for {{ item.name }} (if exists)
+  stat:
+    path: "/etc/sudoers.d/{{ item.name }}"
+  register: sudoers_file
+  become: true
+
+- name: Run visudo validation for {{ item.name }}
+  command: "visudo -cf /etc/sudoers.d/{{ item.name }}"
+  when: sudoers_file.stat.exists
+  become: true
+  ignore_errors: true
+
+- name: Optionally remove user and home directory for {{ item.name }}
+  user:
+    name: "{{ item.name }}"
+    state: absent
+    remove: "{{ item.remove_user_on_delete | default(true) | bool }}"
+    force: true
+  become: true
+  ignore_errors: true

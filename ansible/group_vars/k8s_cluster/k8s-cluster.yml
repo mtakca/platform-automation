@@ -1,0 +1,85 @@
+---
+# Kubernetes Cluster Configuration for Kubespray
+# Reference: kubespray/inventory/sample/group_vars/k8s_cluster/k8s-cluster.yml
+
+# Kubernetes version (leave commented to use Kubespray default)
+# kube_version: v1.30.0
+
+# CNI Plugin - Uses environment default from group_vars/all/environment.yml
+# Can be overridden per environment in group_vars/<env>/k8s.yml
+# Options: calico, cilium, flannel
+kube_network_plugin: "{{ kube_network_plugin | default('calico') }}"
+
+# Ignore etcd directory preflight - Kubespray creates files before kubeadm init
+kubeadm_ignore_preflight_errors:
+  - DirAvailable--mnt-data01-etcd
+  - DirAvailable--var-lib-etcd
+
+# Pod network CIDR
+kube_pods_subnet: 10.0.X.X/16
+
+# Service network CIDR
+kube_service_addresses: 10.0.X.X/12
+
+# Container runtime
+container_manager: containerd
+
+# Enable cluster autoscaler if needed
+# kube_cluster_autoscaler: false
+
+# Metrics server
+metrics_server_enabled: true
+
+# Kubernetes dashboard (optional)
+dashboard_enabled: false
+
+# Cluster domain (CRITICAL - must be set correctly)
+cluster_name: cluster.local
+dns_domain: cluster.local
+
+# CoreDNS
+dns_mode: coredns
+
+# Enable auditing
+kubernetes_audit: true
+
+# etcd deployment type
+etcd_deployment_type: kubeadm
+
+# Kube-proxy mode
+kube_proxy_mode: ipvs
+
+# Enable node local DNS cache
+enable_nodelocaldns: true
+
+# Kubelet configuration
+kubelet_max_pods: 110
+
+# =============================================================================
+# EXTERNAL DISK CONFIGURATION
+# All data stored on /mnt/data01 to keep root disk clean (OS only)
+# =============================================================================
+
+# Containerd - Container images and layers
+containerd_storage_dir: "/mnt/data01/containerd"
+
+# Etcd - Cluster state database
+etcd_data_dir: "/mnt/data01/etcd"
+
+# Kubelet - Pod data, volumes, logs
+kubelet_custom_flags:
+  - "--root-dir=/mnt/data01/kubelet"
+# Docker (if used instead of containerd)
+# docker_daemon_graph: "/mnt/data01/docker"
+
+# Logs directory
+# kube_log_dir: "/mnt/data01/logs/kubernetes"
+
+# =============================================================================
+# NODE LABELS
+# Automatically label worker nodes with role
+# =============================================================================
+
+# Worker node labels (applied to kube_node group)
+node_labels:
+  node-role.kubernetes.io/worker: ""

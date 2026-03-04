@@ -1,0 +1,123 @@
+services:
+  otel-collector:
+    image: {{ monitoring_otel_image }}
+    restart: unless-stopped
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    env_file: {{ monitoring_data_dir }}/otel-collector/.env
+    volumes:
+      - {{ monitoring_data_dir }}/otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - /:/hostfs
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - monitoring
+
+  jaeger:
+    image: {{ monitoring_jaeger_image }}
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+      - "14250:14250"
+    volumes:
+      - {{ monitoring_data_dir }}/jaeger/jaeger-config.yaml:/jaeger/jaeger-config.yaml
+    command: ["--config=/jaeger/jaeger-config.yaml"]
+    env_file: {{ monitoring_data_dir }}/jaeger/.env
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 16686 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - monitoring
+
+  loki:
+    image: {{ monitoring_loki_image }}
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - {{ monitoring_data_dir }}/loki/config:/etc/loki/config
+    env_file: {{ monitoring_data_dir }}/loki/.env
+    command:
+      -config.file=/etc/loki/config/config.yaml
+      -config.expand-env=true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - monitoring
+
+  grafana:
+    image: {{ monitoring_grafana_image }}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: {{ monitoring_data_dir }}/grafana/.env
+    volumes:
+      - {{ monitoring_data_dir }}/grafana/data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+
+  prometheus:
+    image: {{ monitoring_prometheus_image }}
+    user: root
+    restart: unless-stopped
+    volumes:
+      - {{ monitoring_data_dir }}/prometheus/etc/prometheus:/etc/prometheus
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+
+  portainer:
+    image: {{ monitoring_portainer_image }}
+    restart: unless-stopped
+    environment:
+      - VIRTUAL_PORT=9443
+    ports:
+      - "9443:9443"
+      - "8000:8000"
+    volumes:
+      - portainer-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - monitoring
+
+  node_exporter:
+    image: {{ monitoring_node_exporter_image }}
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9100 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+    external: true
+
+volumes:
+  portainer-data:
+  prometheus-data:

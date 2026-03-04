@@ -1,0 +1,5 @@
+---
+# NFS Server defaults - network must be provided via inventory
+nfs_export_path: "{{ nfs_data_dir | default('/mnt/data01/nfs') }}"
+nfs_network: "{{ nfs_allowed_network | mandatory }}"
+nfs_options: "rw,sync,no_subtree_check,no_root_squash"

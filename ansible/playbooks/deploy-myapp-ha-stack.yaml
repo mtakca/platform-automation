@@ -1,0 +1,125 @@
+---
+# Wallet HA Stack Deployment - Master Playbook
+# Deploys: PostgreSQL (Patroni), Couchbase, Kafka (KRaft), Redis (Sentinel)
+#
+# Usage (full stack):
+#   ansible-playbook playbooks/deploy-myapp-ha-stack.yaml \
+#     -i inventories/uat/myapp/postgresql \
+#     -i inventories/uat/myapp/couchbase \
+#     -i inventories/uat/myapp/kafka \
+#     -i inventories/uat/myapp/redis
+#
+# Usage (individual components):
+#   ansible-playbook playbooks/deploy-myapp-ha-stack.yaml -i inventories/uat/myapp/postgresql --tags postgresql
+#   ansible-playbook playbooks/deploy-myapp-ha-stack.yaml -i inventories/uat/myapp/couchbase --tags couchbase
+#   ansible-playbook playbooks/deploy-myapp-ha-stack.yaml -i inventories/uat/myapp/kafka --tags kafka
+#   ansible-playbook playbooks/deploy-myapp-ha-stack.yaml -i inventories/uat/myapp/redis --tags redis
+#
+# Prerequisites:
+#   - VMs provisioned and accessible
+#   - Disks mounted (/mnt/data01, /mnt/index01)
+#   - vitabaks.autobase collection installed
+
+# =============================================================================
+# POSTGRESQL HA (Patroni + ETCD + PgBouncer + Keepalived VIP)
+# =============================================================================
+- name: Deploy PostgreSQL HA (Patroni Cluster)
+  hosts: postgres_cluster
+  become: true
+  gather_facts: true
+  tags: [postgresql, pg]
+  vars:
+    patroni_cluster_name: "{{ hostvars[inventory_hostname]['patroni_cluster_name'] | default('myapp-pg') }}"
+    postgresql_version: "{{ hostvars[inventory_hostname]['postgresql_version'] | default('16') }}"
+    dcs_type: "{{ hostvars[inventory_hostname]['dcs_type'] | default('etcd') }}"
+    pgbouncer_install: "{{ hostvars[inventory_hostname]['pgbouncer_install'] | default(true) }}"
+    with_haproxy_load_balancing: false
+    postgresql_data_dir: "{{ hostvars[inventory_hostname]['postgresql_data_dir'] | default('/mnt/data01/postgresql/data') }}"
+  tasks:
+    - name: Include Autobase pre_checks role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.pre_checks
+
+    - name: Include etcd role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.etcd
+      when: dcs_type == 'etcd'
+
+    - name: Include patroni role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.patroni
+
+    - name: Include pgbouncer role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.pgbouncer
+      when: pgbouncer_install | bool
+
+    - name: Include keepalived role for VIP
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.keepalived
+      when: cluster_vip is defined
+
+    - name: Create application database and user
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.postgresql_databases
+      when: postgresql_databases is defined
+
+    - name: Create application users
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.postgresql_users
+      when: postgresql_users is defined
+
+    - name: Include deploy_finish role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.deploy_finish
+
+# =============================================================================
+# COUCHBASE HA (3-Node Cluster + Keepalived VIP)
+# =============================================================================
+- name: Deploy Couchbase HA Cluster
+  hosts: couchbase
+  become: true
+  gather_facts: true
+  serial: 1
+  tags: [couchbase, cb]
+  tasks:
+    - name: Deploy Couchbase
+      ansible.builtin.include_role:
+        name: couchbase
+
+    - name: Deploy Keepalived for Couchbase VIP
+      ansible.builtin.include_role:
+        name: keepalived
+      when: keepalived_instances is defined
+
+# =============================================================================
+# KAFKA KRAFT (5-Node Controller+Broker Cluster)
+# =============================================================================
+- name: Deploy Kafka KRaft Cluster
+  hosts: kafka
+  become: true
+  gather_facts: true
+  tags: [kafka]
+  tasks:
+    - name: Deploy Kafka
+      ansible.builtin.include_role:
+        name: kafka
+
+# =============================================================================
+# REDIS SENTINEL HA (3-Node Cluster + Keepalived VIP)
+# =============================================================================
+- name: Deploy Redis Sentinel HA Cluster
+  hosts: redis
+  become: true
+  gather_facts: true
+  serial: 1
+  tags: [redis]
+  tasks:
+    - name: Deploy Redis with Sentinel
+      ansible.builtin.include_role:
+        name: redis
+
+    - name: Deploy Keepalived for Redis VIP
+      ansible.builtin.include_role:
+        name: keepalived
+      when: keepalived_instances is defined

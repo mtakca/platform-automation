@@ -1,0 +1,55 @@
+# 2. NETWORK CONFIGURATION
+echo "--- 2. NETWORK CONFIGURATION ---"
+
+# 1. Disable Cloud-Init Network Configuration to prevent overrides on reboot
+echo "Disabling Cloud-Init Network Config..."
+echo "network: {config: disabled}" > /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+
+# 2. Detect the primary network interface (first non-loopback)
+# This handles ens160 vs ens192 vs eth0 variance
+INTERFACE=$(ip -o link show | awk -F': ' '{print $2}' | grep -v "lo" | head -n 1)
+
+if [ -z "$INTERFACE" ]; then
+    echo "ERROR: No network interface found! Fallback to ens192."
+    INTERFACE="ens192"
+fi
+
+echo "Detected Interface: $INTERFACE"
+
+# 3. Create Netplan Configuration
+cat > /etc/netplan/01-terraform-static.yaml <<NETPLAN
+network:
+  version: 2
+  ethernets:
+    $INTERFACE:
+      addresses:
+        - ${ip_address}/24
+      routes:
+        - to: default
+          via: ${gateway}
+      nameservers:
+        addresses: [${dns_servers}]
+NETPLAN
+
+# 4. Cleanup default Cloud-Init netplan if exists to avoid conflicts
+rm -f /etc/netplan/50-cloud-init.yaml
+
+# Helper to run systemctl safely
+run_systemctl() {
+    if [ -d /run/systemd/system ]; then
+        systemctl "$@" || echo "Warning: systemctl $@ failed"
+    else
+        echo "Systemd not running, skipping: systemctl $@"
+    fi
+}
+
+echo "Configuring DNS (systemd-resolved)..."
+# Configure DNS - use systemd-resolved configuration (from reference script)
+cat > /etc/systemd/resolved.conf <<RESOLVED
+[Resolve]
+DNS=${dns_servers}
+RESOLVED
+
+echo "Applying network configuration..."
+netplan apply || true
+run_systemctl restart systemd-resolved

@@ -1,0 +1,7 @@
+---
+- name: Remove SSH keys, sudoers, and users
+  hosts: all
+  become: yes
+  gather_facts: false
+  roles:
+    - remove_ssh_key

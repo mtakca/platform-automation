@@ -1,0 +1,12 @@
+---
+common_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - net-tools
+  - chrony
+  - git
+  - jq
+  - telnet
+common_timezone: "Europe/Istanbul"

@@ -1,0 +1,152 @@
+---
+# Quick Post-Configuration - MOTD + Disk Mount Only
+# Skips apt operations (requires internet)
+
+- name: Quick Post-Config (MOTD + Disk)
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    environment_name: "UAT"
+
+  tasks:
+    - name: Deploy EXAMPLE MOTD banner
+      copy:
+        dest: /etc/motd
+        mode: "0644"
+        content: |
+          ██████╗  █████╗ ██████╗ ███████╗██╗     
+          ██╔══██╗██╔══██╗██╔══██╗██╔════╝██║     
+          ██████╔╝███████║██████╔╝█████╗  ██║     
+          ██╔═══╝ ██╔══██║██╔═══╝ ██╔══╝  ██║     
+          ██║     ██║  ██║██║     ███████╗███████╗
+          ╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝╚══════╝
+
+          Environment: {{ environment_name }}
+          Hostname:    {{ inventory_hostname }}
+          IP Address:  {{ ansible_host }}
+
+          Managed by Ansible
+          ===========================================================
+
+    - name: Remove default Ubuntu MOTD scripts
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/update-motd.d/10-help-text
+        - /etc/update-motd.d/50-motd-news
+        - /etc/update-motd.d/91-release-upgrade
+      ignore_errors: true
+
+    - name: Set timezone to Istanbul
+      timezone:
+        name: "Europe/Istanbul"
+
+    # Disk /dev/sdb -> /mnt/data01
+    - name: Check for /dev/sdb
+      stat:
+        path: /dev/sdb
+      register: sdb_exists
+
+    - name: Check if /mnt/data01 already mounted
+      shell: mount | grep -q "/mnt/data01"
+      register: data01_mounted
+      failed_when: false
+      changed_when: false
+
+    - name: Check if /dev/sdb has filesystem
+      shell: blkid /dev/sdb
+      register: sdb_has_fs
+      failed_when: false
+      changed_when: false
+      when: sdb_exists.stat.exists
+
+    - name: Create XFS filesystem on /dev/sdb
+      community.general.filesystem:
+        dev: /dev/sdb
+        fstype: xfs
+        force: false
+      when:
+        - sdb_exists.stat.exists
+        - sdb_has_fs.rc != 0
+        - data01_mounted.rc != 0
+
+    - name: Create /mnt/data01 directory
+      file:
+        path: /mnt/data01
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: sdb_exists.stat.exists
+
+    - name: Mount /dev/sdb to /mnt/data01
+      ansible.posix.mount:
+        path: /mnt/data01
+        src: /dev/sdb
+        fstype: xfs
+        opts: defaults,nofail
+        state: mounted
+      when:
+        - sdb_exists.stat.exists
+        - data01_mounted.rc != 0
+
+    # Disk /dev/sdc -> /mnt/index01
+    - name: Check for /dev/sdc
+      stat:
+        path: /dev/sdc
+      register: sdc_exists
+
+    - name: Check if /mnt/index01 already mounted
+      shell: mount | grep -q "/mnt/index01"
+      register: index01_mounted
+      failed_when: false
+      changed_when: false
+
+    - name: Check if /dev/sdc has filesystem
+      shell: blkid /dev/sdc
+      register: sdc_has_fs
+      failed_when: false
+      changed_when: false
+      when: sdc_exists.stat.exists
+
+    - name: Create XFS filesystem on /dev/sdc
+      community.general.filesystem:
+        dev: /dev/sdc
+        fstype: xfs
+        force: false
+      when:
+        - sdc_exists.stat.exists
+        - sdc_has_fs.rc != 0
+        - index01_mounted.rc != 0
+
+    - name: Create /mnt/index01 directory
+      file:
+        path: /mnt/index01
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      when: sdc_exists.stat.exists
+
+    - name: Mount /dev/sdc to /mnt/index01
+      ansible.posix.mount:
+        path: /mnt/index01
+        src: /dev/sdc
+        fstype: xfs
+        opts: defaults,nofail
+        state: mounted
+      when:
+        - sdc_exists.stat.exists
+        - index01_mounted.rc != 0
+
+    - name: Display disk status
+      shell: df -h | grep -E "(Filesystem|/mnt|/dev/sd)"
+      register: disk_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show disk status
+      debug:
+        var: disk_status.stdout_lines

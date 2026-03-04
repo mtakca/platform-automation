@@ -1,0 +1,9 @@
+# Kubespray — External Dependency
+# Clone Kubespray into this directory before running k8s deployment playbooks:
+#
+#   git clone https://github.com/kubernetes-sigs/kubespray.git ansible/kubespray
+#   cd ansible/kubespray && pip install -r requirements.txt
+#
+# Referenced by:
+#   - playbooks/deploy-k8s.yaml
+#   - playbooks/setup_k8s_cluster.yaml

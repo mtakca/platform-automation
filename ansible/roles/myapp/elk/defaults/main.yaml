@@ -1,0 +1,21 @@
+---
+# ELK Stack Role Defaults
+
+# Elasticsearch
+elasticsearch_version: "8.11.0"
+elasticsearch_data_dir: /mnt/data01/elasticsearch
+elasticsearch_heap_size: "1g"
+elasticsearch_http_port: 9200
+elasticsearch_transport_port: 9300
+
+# Logstash
+logstash_version: "8.11.0"
+logstash_data_dir: /mnt/data01/logstash
+
+# Kibana
+kibana_version: "8.11.0"
+kibana_port: 5601
+kibana_server_name: "{{ inventory_hostname }}"
+
+# Docker Compose
+elk_compose_dir: /home/myapp/elk

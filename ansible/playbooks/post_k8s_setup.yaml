@@ -1,0 +1,586 @@
+---
+# Post-Kubernetes Deployment Playbook
+# Run AFTER Kubespray cluster.yml completes
+# Installs: Gateway API, Longhorn, cert-manager, Vault
+
+- name: Install Dependencies and Gateway API
+  hosts: kube_control_plane[0]
+  become: true
+  vars:
+    gateway_api_version: "v1.2.0"
+    gateway_api_base_url: "https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/{{ gateway_api_version }}/config/crd/standard"
+    # CNI Detection (Default to cilium if not set)
+    cni_plugin: "{{ kube_network_plugin | default('cilium') }}"
+    ingress_class: "{{ 'nginx' if cni_plugin == 'calico' else 'cilium' }}"
+  tasks:
+    - name: Detect CNI Plugin
+      ansible.builtin.debug:
+        msg: "Detected CNI Plugin: {{ cni_plugin }}. Using Ingress Class: {{ ingress_class }}"
+
+    - name: Install python3-kubernetes and helm dependencies
+      ansible.builtin.apt:
+        name:
+          - python3-kubernetes
+          - python3-yaml
+        state: present
+        update_cache: yes
+
+    - name: Install Helm if not present
+      ansible.builtin.shell: |
+        if ! command -v helm &> /dev/null; then
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        fi
+      args:
+        creates: /usr/local/bin/helm
+
+    - name: Install Gateway API CRDs
+      kubernetes.core.k8s:
+        state: present
+        src: "{{ item }}"
+      loop:
+        - "{{ gateway_api_base_url }}/gateway.networking.k8s.io_gatewayclasses.yaml"
+        - "{{ gateway_api_base_url }}/gateway.networking.k8s.io_gateways.yaml"
+        - "{{ gateway_api_base_url }}/gateway.networking.k8s.io_httproutes.yaml"
+        - "{{ gateway_api_base_url }}/gateway.networking.k8s.io_grpcroutes.yaml"
+        - "{{ gateway_api_base_url }}/gateway.networking.k8s.io_referencegrants.yaml"
+      ignore_errors: true
+      when: cni_plugin == 'cilium' # Gateway API currently configured for Cilium only
+
+    - name: Create Cilium GatewayClass
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: GatewayClass
+          metadata:
+            name: cilium
+          spec:
+            controllerName: io.cilium/gateway-controller
+      when: cni_plugin == 'cilium'
+
+    - name: Create Cilium IngressClass
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: IngressClass
+          metadata:
+            name: cilium
+            annotations:
+              ingressclass.kubernetes.io/is-default-class: "true"
+          spec:
+            controller: cilium.io/ingress-controller
+      when: cni_plugin == 'cilium'
+
+    # =============================================================================
+    # CALICO SPECIFIC: METALLB & NGINX INGRESS
+    # =============================================================================
+    - name: Add MetalLB & NGINX Helm repos
+      ansible.builtin.shell: |
+        helm repo add metallb https://metallb.github.io/metallb
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+      changed_when: false
+      when: cni_plugin == 'calico'
+
+    - name: Install MetalLB (Calico LB Provider)
+      ansible.builtin.shell: |
+        helm upgrade --install metallb metallb/metallb \
+          --namespace metallb-system \
+          --create-namespace \
+          --wait --timeout 5m
+      when: cni_plugin == 'calico'
+
+    - name: Configure MetalLB IP Pool (Layer 2)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: IPAddressPool
+          metadata:
+            name: default-pool
+            namespace: metallb-system
+          spec:
+            addresses:
+              - "{{ lb_pool_start }}-{{ lb_pool_end }}"
+      vars:
+        lb_pool_start: "{{ network_cidr | default('10.0.X.X/24') | regex_replace('0/24$', '200') }}"
+        lb_pool_end: "{{ network_cidr | default('10.0.X.X/24') | regex_replace('0/24$', '250') }}"
+      when: cni_plugin == 'calico'
+
+    - name: Configure MetalLB L2 Advertisement
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: metallb.io/v1beta1
+          kind: L2Advertisement
+          metadata:
+            name: default-l2
+            namespace: metallb-system
+          spec:
+            ipAddressPools:
+              - default-pool
+      when: cni_plugin == 'calico'
+
+    - name: Install NGINX Ingress Controller
+      ansible.builtin.shell: |
+        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+          --namespace ingress-nginx \
+          --create-namespace \
+          --set controller.service.type=LoadBalancer \
+          --set controller.ingressClassResource.name=nginx \
+          --set controller.ingressClassResource.default=true \
+          --wait --timeout 5m
+      when: cni_plugin == 'calico'
+
+# =============================================================================
+# LONGHORN STORAGE
+# =============================================================================
+- name: Install Longhorn Storage
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Add Longhorn Helm repo
+      ansible.builtin.shell: |
+        helm repo add longhorn https://charts.longhorn.io
+        helm repo update
+      changed_when: false
+
+    - name: Create longhorn-system namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: longhorn-system
+
+    - name: Install Longhorn via Helm
+      ansible.builtin.shell: |
+        helm upgrade --install longhorn longhorn/longhorn \
+          --namespace longhorn-system \
+          --set defaultSettings.defaultDataPath=/mnt/data01/longhorn \
+          --set persistence.defaultClassReplicaCount=2 \
+          --wait --timeout 10m
+      register: longhorn_install
+      changed_when: "'has been upgraded' in longhorn_install.stdout or 'has been installed' in longhorn_install.stdout"
+
+# =============================================================================
+# CERT-MANAGER
+# =============================================================================
+- name: Install cert-manager
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Add Jetstack Helm repo
+      ansible.builtin.shell: |
+        helm repo add jetstack https://charts.jetstack.io
+        helm repo update
+      changed_when: false
+
+    - name: Install cert-manager via Helm
+      ansible.builtin.shell: |
+        helm upgrade --install cert-manager jetstack/cert-manager \
+          --namespace cert-manager \
+          --create-namespace \
+          --set crds.enabled=true \
+          --wait --timeout 5m
+      register: certmanager_install
+      changed_when: "'has been upgraded' in certmanager_install.stdout or 'has been installed' in certmanager_install.stdout"
+
+# =============================================================================
+# HASHICORP VAULT
+# =============================================================================
+- name: Install Vault
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Add HashiCorp Helm repo
+      ansible.builtin.shell: |
+        helm repo add hashicorp https://helm.releases.hashicorp.com
+        helm repo update
+      changed_when: false
+
+    - name: Create vault namespace
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: vault
+
+    - name: Install Vault via Helm (Dev mode for testing)
+      ansible.builtin.shell: |
+        helm upgrade --install vault hashicorp/vault \
+          --namespace vault \
+          --set server.dev.enabled=true \
+          --set server.dataStorage.size=10Gi \
+          --wait --timeout 5m
+      register: vault_install
+      changed_when: "'has been upgraded' in vault_install.stdout or 'has been installed' in vault_install.stdout"
+
+# =============================================================================
+# WORKER NODE LABELS
+# =============================================================================
+- name: Label Worker Nodes
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Get worker nodes
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Node
+        label_selectors:
+          - "!node-role.kubernetes.io/control-plane"
+      register: worker_nodes
+
+    - name: Apply worker role label to nodes
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Node
+          metadata:
+            name: "{{ item.metadata.name }}"
+            labels:
+              node-role.kubernetes.io/worker: ""
+      loop: "{{ worker_nodes.resources }}"
+      when: "'node-role.kubernetes.io/worker' not in (item.metadata.labels | default({}))"
+
+# =============================================================================
+# CILIUM L2 ANNOUNCEMENT POLICY (Only for Cilium)
+# =============================================================================
+- name: Configure Cilium L2 LoadBalancer
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Create CiliumL2AnnouncementPolicy
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cilium.io/v2alpha1
+          kind: CiliumL2AnnouncementPolicy
+          metadata:
+            name: default-l2-policy
+          spec:
+            interfaces:
+              - ^en.*
+              - ^eth.*
+            externalIPs: true
+            loadBalancerIPs: true
+      when: hostvars[inventory_hostname].kube_network_plugin | default('cilium') == 'cilium'
+
+    - name: Set LoadBalancer IP pool variables
+      ansible.builtin.set_fact:
+        lb_pool_start: "{{ network_cidr | default('10.0.X.X/24') | regex_replace('0/24$', '200') }}"
+        lb_pool_end: "{{ network_cidr | default('10.0.X.X/24') | regex_replace('0/24$', '250') }}"
+      when: hostvars[inventory_hostname].kube_network_plugin | default('cilium') == 'cilium'
+
+    - name: Create CiliumLoadBalancerIPPool
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: cilium.io/v2alpha1
+          kind: CiliumLoadBalancerIPPool
+          metadata:
+            name: default-pool
+          spec:
+            blocks:
+              - start: "{{ lb_pool_start }}"
+                stop: "{{ lb_pool_end }}"
+      when: hostvars[inventory_hostname].kube_network_plugin | default('cilium') == 'cilium'
+
+# =============================================================================
+# INGRESS RESOURCES FOR MANAGEMENT UIs
+# =============================================================================
+- name: Create Ingress Resources
+  hosts: kube_control_plane[0]
+  become: true
+  vars:
+    # Uses variables from group_vars/all/environment.yml
+    ingress_base_domain: "{{ base_domain | default('example.com') }}"
+    ingress_env_prefix: "{{ environment_prefix | default('myapp-uat') }}"
+    cni_plugin: "{{ kube_network_plugin | default('cilium') }}"
+    ingress_class: "{{ 'nginx' if cni_plugin == 'calico' else 'cilium' }}"
+  tasks:
+    - name: Load monitoring values for certificates
+      ansible.builtin.include_vars:
+        file: /Users/takca/Workspace/DevOps/monitoring-infra/values.uat.pf.yaml
+        name: monitoring_values
+
+    - name: Create wildcard-tls secret in namespaces
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: wildcard-tls
+            namespace: "{{ item }}"
+          type: kubernetes.io/tls
+          data:
+            tls.crt: "{{ monitoring_values.global.ingressCerts.internal.crt }}"
+            tls.key: "{{ monitoring_values.global.ingressCerts.internal.key }}"
+      loop:
+        - longhorn-system
+        - vault
+        - kube-system
+
+    - name: Create Longhorn UI Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: longhorn-ui
+            namespace: longhorn-system
+            annotations:
+              kubernetes.io/ingress.class: "{{ ingress_class }}"
+              external-dns.alpha.kubernetes.io/hostname: "longhorn-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+          spec:
+            ingressClassName: "{{ ingress_class }}"
+            tls:
+              - hosts:
+                  - "longhorn-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                secretName: wildcard-tls
+            rules:
+              - host: "longhorn-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: longhorn-frontend
+                          port:
+                            number: 80
+
+    - name: Create Vault UI Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: vault-ui
+            namespace: vault
+            annotations:
+              kubernetes.io/ingress.class: "{{ ingress_class }}"
+              external-dns.alpha.kubernetes.io/hostname: "vault-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+          spec:
+            ingressClassName: "{{ ingress_class }}"
+            tls:
+              - hosts:
+                  - "vault-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                secretName: wildcard-tls
+            rules:
+              - host: "vault-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: vault
+                          port:
+                            number: 8200
+
+    - name: Create Hubble UI Ingress
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: hubble-ui
+            namespace: kube-system
+            annotations:
+              kubernetes.io/ingress.class: "{{ ingress_class }}"
+              external-dns.alpha.kubernetes.io/hostname: "hubble-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+          spec:
+            ingressClassName: "{{ ingress_class }}"
+            tls:
+              - hosts:
+                  - "hubble-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                secretName: wildcard-tls
+            rules:
+              - host: "hubble-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: hubble-ui
+                          port:
+                            number: 80
+
+    - name: Wait for Cilium Ingress LoadBalancer services to be created
+      ansible.builtin.pause:
+        seconds: 30
+      when: cilium_ingress_controller_loadbalancer_mode | default('shared') == 'dedicated'
+
+    - name: Annotate LoadBalancer services for ExternalDNS (Dedicated mode)
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: "{{ item.service_name }}"
+            namespace: "{{ item.namespace }}"
+            annotations:
+              external-dns.alpha.kubernetes.io/hostname: "{{ item.hostname }}"
+        wait: false
+      loop:
+        - service_name: cilium-ingress-longhorn-ui
+          namespace: longhorn-system
+          hostname: "longhorn-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+        - service_name: cilium-ingress-hubble-ui
+          namespace: kube-system
+          hostname: "hubble-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+        - service_name: cilium-ingress-vault-ui
+          namespace: vault
+          hostname: "vault-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+      when: cilium_ingress_controller_loadbalancer_mode | default('shared') == 'dedicated'
+      ignore_errors: true
+
+# =============================================================================
+# GATEWAY API RESOURCES (Alternative to Ingress)
+# Uses Cilium Gateway API for HTTP routing
+# =============================================================================
+- name: Create Gateway API Resources
+  hosts: kube_control_plane[0]
+  become: true
+  vars:
+    ingress_base_domain: "{{ base_domain | default('example.com') }}"
+    ingress_env_prefix: "{{ environment_prefix | default('myapp-uat') }}"
+    cni_plugin: "{{ kube_network_plugin | default('cilium') }}"
+  tasks:
+    - name: Create Cilium Gateway
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: Gateway
+          metadata:
+            name: cilium-gateway
+            namespace: kube-system
+          spec:
+            gatewayClassName: cilium
+            listeners:
+              - name: http
+                protocol: HTTP
+                port: 80
+                allowedRoutes:
+                  namespaces:
+                    from: All
+      when: cni_plugin == 'cilium'
+
+    - name: Create Longhorn HTTPRoute
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: longhorn-route
+            namespace: longhorn-system
+          spec:
+            parentRefs:
+              - name: cilium-gateway
+                namespace: kube-system
+            hostnames:
+              - "longhorn-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /
+                backendRefs:
+                  - name: longhorn-frontend
+                    port: 80
+
+    - name: Create Vault HTTPRoute
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: vault-route
+            namespace: vault
+          spec:
+            parentRefs:
+              - name: cilium-gateway
+                namespace: kube-system
+            hostnames:
+              - "vault-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /
+                backendRefs:
+                  - name: vault
+                    port: 8200
+
+    - name: Create Hubble HTTPRoute
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: gateway.networking.k8s.io/v1
+          kind: HTTPRoute
+          metadata:
+            name: hubble-route
+            namespace: kube-system
+          spec:
+            parentRefs:
+              - name: cilium-gateway
+                namespace: kube-system
+            hostnames:
+              - "hubble-{{ ingress_env_prefix }}.{{ ingress_base_domain }}"
+            rules:
+              - matches:
+                  - path:
+                      type: PathPrefix
+                      value: /
+                backendRefs:
+                  - name: hubble-ui
+                    port: 80
+      when: cni_plugin == 'cilium'
+
+# =============================================================================
+# FINAL VERIFICATION
+# =============================================================================
+- name: Verify Installation
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Display cluster status
+      ansible.builtin.shell: |
+        echo "=== NODES ==="
+        kubectl get nodes -o wide
+        echo ""
+        echo "=== NAMESPACES ==="
+        kubectl get ns
+        echo ""
+        echo "=== STORAGE CLASSES ==="
+        kubectl get sc
+        echo ""
+        echo "=== GATEWAY CLASSES ==="
+        kubectl get gatewayclass
+        echo "=== GATEWAYS ==="
+        kubectl get gateway -A
+        echo "=== HTTPROUTES ==="
+        kubectl get httproute -A
+        echo "=== INGRESS CLASSES ==="
+        kubectl get ingressclass
+      register: cluster_status
+      changed_when: false
+
+    - name: Show cluster status
+      ansible.builtin.debug:
+        msg: "{{ cluster_status.stdout_lines }}"

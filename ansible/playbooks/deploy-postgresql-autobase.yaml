@@ -1,0 +1,73 @@
+---
+# PostgreSQL HA Deployment with Autobase
+# Usage: ansible-playbook -i inventories/uat/uat.34.myapp-new.yaml playbooks/deploy-postgresql-autobase.yaml --become
+#
+# This playbook deploys a Patroni-based PostgreSQL HA cluster using vitabaks.autobase collection
+
+- name: Deploy PostgreSQL HA Cluster
+  hosts: postgresql
+  become: true
+  gather_facts: true
+
+  vars:
+    # Use inventory-defined values or defaults
+    patroni_cluster_name: "{{ hostvars[inventory_hostname]['patroni_cluster_name'] | default('myapp-pg') }}"
+    postgresql_version: "{{ hostvars[inventory_hostname]['postgresql_version'] | default('16') }}"
+
+    # DCS (Distributed Configuration Store)
+    dcs_type: "{{ hostvars[inventory_hostname]['dcs_type'] | default('etcd') }}"
+
+    # PgBouncer
+    pgbouncer_install: "{{ hostvars[inventory_hostname]['pgbouncer_install'] | default(true) }}"
+
+    # HAProxy disabled - using Keepalived VIP
+    with_haproxy_load_balancing: false
+
+    # Data directory
+    postgresql_data_dir: "{{ hostvars[inventory_hostname]['postgresql_data_dir'] | default('/mnt/data01/postgresql/data') }}"
+
+  tasks:
+    - name: Include Autobase pre_checks role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.pre_checks
+      tags: [postgresql, pre_checks]
+
+    - name: Include etcd role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.etcd
+      when: dcs_type == 'etcd'
+      tags: [postgresql, etcd]
+
+    - name: Include patroni role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.patroni
+      tags: [postgresql, patroni]
+
+    - name: Include pgbouncer role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.pgbouncer
+      when: pgbouncer_install | bool
+      tags: [postgresql, pgbouncer]
+
+    - name: Include keepalived role for VIP
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.keepalived
+      when: keepalived_vip is defined
+      tags: [postgresql, keepalived]
+
+    - name: Create application database and user
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.postgresql_databases
+      when: postgresql_databases is defined
+      tags: [postgresql, databases]
+
+    - name: Create application users
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.postgresql_users
+      when: postgresql_users is defined
+      tags: [postgresql, users]
+
+    - name: Include deploy_finish role
+      ansible.builtin.include_role:
+        name: vitabaks.autobase.deploy_finish
+      tags: [postgresql, finish]

@@ -1,0 +1,17 @@
+---
+- name: Download JMX Exporter JAR
+  get_url:
+    url: "{{ kafka_jmx_jar_url }}"
+    dest: "/opt/kafka/libs/jmx_prometheus_javaagent.jar"
+    owner: kafka
+    group: kafka
+    mode: "0644"
+
+- name: Create JMX Exporter Config
+  template:
+    src: jmx_exporter_config.yaml.j2
+    dest: "{{ kafka_jmx_config_file }}"
+    owner: kafka
+    group: kafka
+    mode: "0644"
+  notify: restart kafka

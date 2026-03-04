@@ -1,0 +1,7 @@
+---
+- name: Restart ELK
+  community.docker.docker_compose_v2:
+    project_src: "{{ elk_compose_dir }}"
+    state: present
+    restarted: true
+  become_user: myapp

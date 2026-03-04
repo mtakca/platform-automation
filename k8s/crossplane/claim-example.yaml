@@ -1,0 +1,24 @@
+---
+# Example Developer Claim — PostgreSQL Database
+# This is the ONLY file a developer writes to get a new database.
+# ArgoCD syncs it, Crossplane provisions it, credentials appear as a K8s Secret.
+#
+# Usage:
+#   1. Copy this file into your app's Git directory
+#   2. Customize metadata.name and spec.parameters
+#   3. Push to Git — ArgoCD + Crossplane handle the rest
+#   4. Mount the auto-generated Secret in your Pod for connection details
+apiVersion: database.platform.local/v1alpha1
+kind: PostgreSQLInstance
+metadata:
+  name: my-service-db
+  namespace: my-namespace
+spec:
+  parameters:
+    storageGB: 50
+    version: "15"
+  compositionSelector:
+    matchLabels:
+      provider: patroni-ha-cluster
+  writeConnectionSecretToRef:
+    name: my-service-db-credentials

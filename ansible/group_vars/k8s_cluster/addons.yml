@@ -1,0 +1,5 @@
+---
+# Kubernetes Addons Configuration
+# Disable default ingress-nginx as we are using Cilium Ingress
+ingress_nginx_enabled: false
+ingress_nginx_host_network: false

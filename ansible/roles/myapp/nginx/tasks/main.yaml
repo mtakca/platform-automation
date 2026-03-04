@@ -1,0 +1,69 @@
+---
+# Install Docker first (standalone node)
+- name: Install Docker on standalone node
+  ansible.builtin.include_tasks: ../../common/tasks/install-docker.yaml
+
+- name: Create Nginx directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+  loop:
+    - "{{ nginx_data_dir }}"
+    - "{{ nginx_data_dir }}/nginx_data/conf.d"
+    - "{{ nginx_data_dir }}/nginx_data/ssl"
+    - "{{ nginx_static_dir }}"
+
+- name: Deploy Nginx config
+  ansible.builtin.template:
+    src: default.conf.j2
+    dest: "{{ nginx_data_dir }}/nginx_data/conf.d/default.conf"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+  notify: restart nginx
+
+- name: Deploy proxy params
+  ansible.builtin.template:
+    src: proxy_params.conf.j2
+    dest: "{{ nginx_data_dir }}/nginx_data/conf.d/proxy_params.conf"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+  notify: restart nginx
+
+- name: Copy SSL certificate
+  ansible.builtin.copy:
+    src: "{{ nginx_ssl_cert_src }}"
+    dest: "{{ nginx_data_dir }}/nginx_data/ssl/cert.crt"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+  when: nginx_ssl_cert_src is defined
+  notify: restart nginx
+
+- name: Copy SSL key
+  ansible.builtin.copy:
+    src: "{{ nginx_ssl_key_src }}"
+    dest: "{{ nginx_data_dir }}/nginx_data/ssl/cert.key"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+  when: nginx_ssl_key_src is defined
+  notify: restart nginx
+
+- name: Deploy docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ nginx_data_dir }}/docker-compose.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Start Nginx with docker compose
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ nginx_data_dir }}"
+  changed_when: true

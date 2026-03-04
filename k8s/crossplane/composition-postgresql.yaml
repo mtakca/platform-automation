@@ -1,0 +1,106 @@
+---
+# Crossplane Composition — Patroni HA PostgreSQL
+# Implementation logic for the XPostgreSQLInstance XRD.
+# When a developer creates a PostgreSQLInstance claim, this composition:
+#   1. Creates a database on the central Patroni cluster
+#   2. Creates a dedicated database user with scoped privileges
+#   3. Generates a random password and writes connection info to a K8s Secret
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: patroni-ha-postgres
+  labels:
+    provider: patroni-ha-cluster
+    crossplane.io/xrd: xpostgresqlinstances.database.platform.local
+spec:
+  writeConnectionSecretsToNamespace: crossplane-system
+  compositeTypeRef:
+    apiVersion: database.platform.local/v1alpha1
+    kind: XPostgreSQLInstance
+  resources:
+    # 1. Create the database
+    - name: create-database
+      base:
+        apiVersion: postgresql.sql.crossplane.io/v1alpha1
+        kind: Database
+        spec:
+          forProvider: {}
+          providerConfigRef:
+            name: main-patroni-cluster
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: "metadata.labels[crossplane.io/claim-name]"
+          toFieldPath: "spec.forProvider.name"
+          transforms:
+            - type: string
+              string:
+                fmt: "db_%s"
+
+    # 2. Create a scoped database user
+    - name: create-role
+      base:
+        apiVersion: postgresql.sql.crossplane.io/v1alpha1
+        kind: Role
+        spec:
+          forProvider:
+            privileges:
+              login: true
+              createDb: false
+              superUser: false
+          providerConfigRef:
+            name: main-patroni-cluster
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: "metadata.labels[crossplane.io/claim-name]"
+          toFieldPath: "spec.forProvider.name"
+          transforms:
+            - type: string
+              string:
+                fmt: "user_%s"
+      connectionDetails:
+        - name: username
+          fromFieldPath: "spec.forProvider.name"
+          type: FromFieldPath
+
+    # 3. Grant privileges on the database to the user
+    - name: grant-privileges
+      base:
+        apiVersion: postgresql.sql.crossplane.io/v1alpha1
+        kind: Grant
+        spec:
+          forProvider:
+            privileges:
+              - ALL
+            withOption: GRANT
+          providerConfigRef:
+            name: main-patroni-cluster
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: "metadata.labels[crossplane.io/claim-name]"
+          toFieldPath: "spec.forProvider.databaseRef.name"
+          transforms:
+            - type: string
+              string:
+                fmt: "db_%s"
+        - type: FromCompositeFieldPath
+          fromFieldPath: "metadata.labels[crossplane.io/claim-name]"
+          toFieldPath: "spec.forProvider.roleRef.name"
+          transforms:
+            - type: string
+              string:
+                fmt: "user_%s"
+---
+# Crossplane ProviderConfig — Connection to Patroni HA Cluster
+# Stores the connection details for the central Patroni cluster.
+# The secret must be pre-created with host/port/sslmode/username/password keys.
+apiVersion: postgresql.sql.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: main-patroni-cluster
+spec:
+  credentials:
+    source: PostgreSQLConnectionSecret
+    connectionSecretRef:
+      namespace: crossplane-system
+      name: patroni-cluster-credentials
+  sslMode: require

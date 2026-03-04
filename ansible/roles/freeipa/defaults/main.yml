@@ -1,0 +1,38 @@
+---
+# FreeIPA Server Configuration
+
+# FreeIPA Domain and Realm (REALM = uppercase of domain)
+freeipa_domain: "p.local"
+freeipa_realm: "P.LOCAL"
+
+# FreeIPA Admin Credentials
+freeipa_admin_password: "{{ vault_freeipa_admin_password | mandatory }}"
+freeipa_ds_password: "{{ vault_freeipa_ds_password | mandatory }}"
+
+# DNS Configuration
+freeipa_setup_dns: true
+freeipa_forwarders:
+  - "8.8.8.8"
+  - "1.1.1.1"
+
+# NTP
+freeipa_setup_ntp: true
+
+# Data directory (use external disk if available)
+freeipa_data_dir: "/mnt/data01/ipa"
+freeipa_use_external_disk: true
+
+# Firewall ports
+freeipa_firewall_ports:
+  - 22/tcp # SSH
+  - 80/tcp # HTTP
+  - 443/tcp # HTTPS
+  - 389/tcp # LDAP
+  - 636/tcp # LDAPS
+  - 88/tcp # Kerberos
+  - 88/udp
+  - 464/tcp # Kerberos passwd
+  - 464/udp
+  - 53/tcp # DNS
+  - 53/udp
+  - 123/udp # NTP

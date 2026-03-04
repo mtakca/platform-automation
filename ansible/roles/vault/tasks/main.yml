@@ -1,0 +1,111 @@
+---
+# HashiCorp Vault Native Installation (Raft HA)
+
+- name: Install prerequisites
+  apt:
+    name:
+      - curl
+      - gnupg
+      - software-properties-common
+      - jq
+    state: present
+    update_cache: yes
+
+- name: Add HashiCorp GPG key
+  apt_key:
+    url: https://apt.releases.hashicorp.com/gpg
+    state: present
+
+- name: Add HashiCorp repository
+  apt_repository:
+    repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+    state: present
+    update_cache: yes
+
+- name: Install Vault
+  apt:
+    name: "vault={{ vault_version }}-1"
+    state: present
+
+- name: Create Vault group
+  group:
+    name: "{{ vault_group }}"
+    system: yes
+
+- name: Create Vault user
+  user:
+    name: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    system: yes
+    shell: /usr/sbin/nologin
+    home: "{{ vault_data_dir }}"
+    create_home: no
+
+- name: Create Vault directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0750"
+  loop:
+    - "{{ vault_config_dir }}"
+    - "{{ vault_data_dir }}"
+    - "{{ vault_data_dir }}/raft"
+
+- name: Deploy Vault configuration
+  template:
+    src: vault.hcl.j2
+    dest: "{{ vault_config_dir }}/vault.hcl"
+    owner: "{{ vault_user }}"
+    group: "{{ vault_group }}"
+    mode: "0640"
+  notify: restart vault
+
+- name: Create Vault systemd service override directory
+  file:
+    path: /etc/systemd/system/vault.service.d
+    state: directory
+    mode: "0755"
+
+- name: Configure Vault systemd override
+  copy:
+    dest: /etc/systemd/system/vault.service.d/override.conf
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/vault server -config={{ vault_config_dir }}/vault.hcl
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart vault
+
+- name: Set Vault environment variables
+  copy:
+    dest: /etc/profile.d/vault.sh
+    content: |
+      export VAULT_ADDR='http://127.0.0.1:{{ vault_api_port }}'
+      export VAULT_SKIP_VERIFY=true
+    mode: "0644"
+
+- name: Enable and start Vault service
+  systemd:
+    name: vault
+    state: started
+    enabled: yes
+    daemon_reload: yes
+
+- name: Wait for Vault to be ready
+  wait_for:
+    port: "{{ vault_api_port }}"
+    host: 127.0.0.1
+    delay: 5
+    timeout: 60
+
+- name: Check Vault status
+  command: vault status -format=json
+  environment:
+    VAULT_ADDR: "http://127.0.0.1:{{ vault_api_port }}"
+  register: vault_status
+  ignore_errors: yes
+  changed_when: false

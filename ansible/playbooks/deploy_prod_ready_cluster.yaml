@@ -1,0 +1,179 @@
+---
+# Master Playbook: Deploy Production-Ready Kubernetes Cluster
+# This playbook orchestrates the complete setup:
+# 1. Prepare External Disks
+# 2. Bind9 DNS Server
+# 3. Kubernetes Cluster (Kubespray)
+# 4. Post-K8s Setup (Gateway API, Longhorn, cert-manager, Vault)
+# 5. External-DNS
+#
+# Usage:
+#   ansible-playbook -i inventories/uat/myapp.ini playbooks/deploy_prod_ready_cluster.yaml --become -e ansible_password='PASSWORD'
+#
+# Prerequisites:
+#   - VMs provisioned via Terraform
+#   - SSH access to all nodes
+#   - DNS server (10.0.X.X) accessible
+
+- name: Prepare External Disks for Kubernetes
+  hosts: k8s_cluster
+  become: true
+  tasks:
+    - name: Ensure external disk is mounted
+      ansible.builtin.stat:
+        path: /mnt/data01
+      register: data_disk
+      failed_when: not data_disk.stat.exists or not data_disk.stat.isdir
+
+    - name: Force kill etcd container/process if running
+      ansible.builtin.shell: |
+        crictl ps -q --name etcd 2>/dev/null | xargs -r crictl stop 2>/dev/null || true
+        crictl ps -q --name etcd 2>/dev/null | xargs -r crictl rm 2>/dev/null || true
+        pkill -9 etcd 2>/dev/null || true
+      changed_when: false
+
+    - name: Aggressively cleanup etcd directories
+      ansible.builtin.shell: |
+        rm -rf /mnt/data01/etcd
+        rm -rf /var/lib/etcd
+        mkdir -p /mnt/data01/etcd /mnt/data01/etcd/wal
+        chmod 700 /mnt/data01/etcd /mnt/data01/etcd/wal
+      changed_when: false
+
+    - name: Create Kubernetes directories on external disk
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+      loop:
+        - /mnt/data01/containerd
+        - /mnt/data01/kubelet
+        - /mnt/data01/logs
+
+    - name: Create CNI directories for Cilium
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+      loop:
+        - /opt/cni/bin
+        - /etc/cni/net.d
+        - /run/cilium/cgroupv2
+  tags:
+    - prepare-disks
+
+- name: Deploy Bind9 DNS Server
+  hosts: dns
+  become: true
+  roles:
+    - bind9
+  tags:
+    - bind9
+    - dns
+
+- name: Deploy Kubernetes Cluster with Kubespray
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Import Kubespray cluster deployment
+      ansible.builtin.import_playbook: deploy-k8s.yaml
+  tags:
+    - k8s
+    - kubernetes
+    - kubespray
+
+- name: Post-Kubernetes Setup
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Import post-K8s setup playbook
+      ansible.builtin.import_playbook: post_k8s_setup.yaml
+  tags:
+    - post-k8s
+    - addons
+
+- name: Deploy External-DNS
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Import External-DNS deployment
+      ansible.builtin.import_playbook: deploy_external_dns.yaml
+  tags:
+    - external-dns
+    - dns
+
+- name: Verify Production-Ready Cluster
+  hosts: kube_control_plane[0]
+  become: true
+  tasks:
+    - name: Check Kubernetes nodes
+      ansible.builtin.shell: |
+        kubectl get nodes -o wide
+      register: nodes_output
+      changed_when: false
+
+    - name: Check all pods are running
+      ansible.builtin.shell: |
+        kubectl get pods -A --no-headers | grep -v Running | grep -v Completed | wc -l
+      register: failed_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Display cluster status
+      ansible.builtin.debug:
+        msg: |
+          ==========================================
+          PRODUCTION-READY CLUSTER STATUS
+          ==========================================
+          Nodes:
+          {{ nodes_output.stdout }}
+          
+          Failed Pods: {{ failed_pods.stdout }}
+          
+          ==========================================
+          All components should be Running!
+          ==========================================
+      when: failed_pods.stdout | int == 0
+
+    - name: Display cluster components
+      ansible.builtin.shell: |
+        echo "=== NAMESPACES ==="
+        kubectl get ns
+        echo ""
+        echo "=== STORAGE CLASSES ==="
+        kubectl get sc
+        echo ""
+        echo "=== GATEWAY CLASSES ==="
+        kubectl get gatewayclasses 2>/dev/null || echo "No GatewayClasses"
+        echo ""
+        echo "=== INGRESS CLASSES ==="
+        kubectl get ingressclasses
+        echo ""
+        echo "=== CILIUM STATUS ==="
+        kubectl get pods -n kube-system -l k8s-app=cilium
+        echo ""
+        echo "=== LONGHORN STATUS ==="
+        kubectl get pods -n longhorn-system --no-headers | head -5
+        echo ""
+        echo "=== CERT-MANAGER STATUS ==="
+        kubectl get pods -n cert-manager
+        echo ""
+        echo "=== VAULT STATUS ==="
+        kubectl get pods -n vault
+        echo ""
+        echo "=== EXTERNAL-DNS STATUS ==="
+        kubectl get pods -n kube-system -l app.kubernetes.io/name=external-dns 2>/dev/null || echo "External-DNS not found"
+      register: cluster_status
+      changed_when: false
+
+    - name: Show cluster status
+      ansible.builtin.debug:
+        msg: "{{ cluster_status.stdout_lines }}"
+  tags:
+    - verify
+    - status
+

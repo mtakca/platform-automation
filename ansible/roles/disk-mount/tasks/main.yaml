@@ -1,0 +1,64 @@
+---
+# Disk Mount Role - Formats and mounts external disks
+
+- name: Check if device exists
+  ansible.builtin.stat:
+    path: "{{ disk_device }}"
+  register: disk_exists
+
+- name: Check if already mounted
+  ansible.builtin.shell: mount | grep -q "{{ disk_mount_path }}"
+  register: already_mounted
+  failed_when: false
+  changed_when: false
+
+- name: Check if device has filesystem
+  ansible.builtin.shell: blkid {{ disk_device }}
+  register: has_filesystem
+  failed_when: false
+  changed_when: false
+  when: disk_exists.stat.exists
+
+- name: Create filesystem on disk
+  community.general.filesystem:
+    dev: "{{ disk_device }}"
+    fstype: "{{ disk_fs_type }}"
+    force: false
+  when:
+    - disk_exists.stat.exists
+    - has_filesystem.rc != 0
+    - already_mounted.rc != 0
+
+- name: Create mount directory
+  ansible.builtin.file:
+    path: "{{ disk_mount_path }}"
+    state: directory
+    owner: "{{ disk_owner }}"
+    group: "{{ disk_group }}"
+    mode: "{{ disk_mode }}"
+  when: disk_exists.stat.exists
+
+- name: Mount disk
+  ansible.posix.mount:
+    path: "{{ disk_mount_path }}"
+    src: "{{ disk_device }}"
+    fstype: "{{ disk_fs_type }}"
+    opts: defaults,nofail
+    state: mounted
+  when:
+    - disk_exists.stat.exists
+    - already_mounted.rc != 0
+
+- name: Set permissions on mount point
+  ansible.builtin.file:
+    path: "{{ disk_mount_path }}"
+    state: directory
+    owner: "{{ disk_owner }}"
+    group: "{{ disk_group }}"
+    mode: "{{ disk_mode }}"
+  when: disk_exists.stat.exists
+
+- name: Display mount status
+  ansible.builtin.debug:
+    msg: "Disk {{ disk_device }} mounted at {{ disk_mount_path }}"
+  when: disk_exists.stat.exists

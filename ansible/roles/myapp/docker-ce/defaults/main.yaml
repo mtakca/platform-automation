@@ -1,0 +1,20 @@
+---
+# Docker CE version (pinned for production stability)
+docker_version: "29.1.3"
+
+# TCP exposure for Swarm management
+docker_tcp_enabled: true
+docker_tcp_port: 2375
+
+# Custom data directory - EXTERNAL DISK MOUNT
+docker_data_root: "/mnt/data01/docker-data"
+
+# Security: userns-remap (default namespace isolation)
+docker_userns_remap: "default"
+
+# Resource limits
+docker_ulimit_nofile_soft: 64000
+docker_ulimit_nofile_hard: 64000
+
+# Storage driver
+docker_storage_driver: "overlay2"

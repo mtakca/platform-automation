@@ -1,0 +1,65 @@
+---
+# Base Environment Variables Template
+# This file contains default values that can be overridden by environment-specific files
+# in group_vars/uat/, group_vars/p4/, group_vars/prod/
+
+# =============================================================================
+# NETWORK CONFIGURATION
+# Override these in environment-specific files
+# =============================================================================
+network_cidr: "CHANGE_ME"
+network_gateway: "CHANGE_ME"
+
+# =============================================================================
+# DNS CONFIGURATION
+# =============================================================================
+dns_forwarders:
+  - "8.8.8.8"
+  - "8.8.4.4"
+
+# =============================================================================
+# DOMAIN & NAMING
+# =============================================================================
+base_domain: "example.com"
+environment_prefix: "env-name"
+cluster_name: "cluster-name"
+
+# =============================================================================
+# KUBERNETES API SERVER (Auto-calculated)
+# =============================================================================
+kube_apiserver_ip: "{{ hostvars[groups['kube_control_plane'][0]]['ip'] | default(hostvars[groups['kube_control_plane'][0]]['ansible_default_ipv4']['address']) }}"
+kube_apiserver_port: "6443"
+
+# =============================================================================
+# CILIUM L2 LOADBALANCER IP POOL (Auto-calculated)
+# =============================================================================
+cilium_lb_pool_start: "{{ network_cidr | regex_replace('0/24$', '200') }}"
+cilium_lb_pool_end: "{{ network_cidr | regex_replace('0/24$', '250') }}"
+
+# =============================================================================
+# DNS SERVER (Auto-calculated from inventory)
+# =============================================================================
+dns_server_ip: "{{ hostvars[groups['dns'][0]]['ip'] | default(network_cidr | regex_replace('0/24$', '2')) }}"
+
+# =============================================================================
+# TRUSTED NETWORKS
+# =============================================================================
+trusted_networks:
+  - "{{ network_cidr }}"
+  - "localhost"
+  - "localnets"
+
+# =============================================================================
+# KUBERNETES CNI CONFIGURATION
+# Options: calico, cilium, flannel
+# Override in environment-specific files (e.g., group_vars/uat/k8s.yml)
+# =============================================================================
+kube_network_plugin: "calico" # Default CNI
+
+# Calico specific (when kube_network_plugin: calico)
+calico_ipip_mode: "Always"
+calico_vxlan_mode: "Never"
+
+# Cilium specific (when kube_network_plugin: cilium)
+cilium_enable_hubble: true
+cilium_kube_proxy_replacement: "strict"

@@ -1,0 +1,70 @@
+- name: Install prerequisite packages
+  apt:
+    name:
+      - ca-certificates
+      - software-properties-common
+      - apt-transport-https
+    state: present
+    update_cache: yes
+
+- name: Set hostname
+  command: hostnamectl set-hostname "{{ landscape_hostname }}"
+  when: ansible_hostname != landscape_hostname
+
+- name: Add Landscape PPA (self-hosted LTS)
+  apt_repository:
+    repo: "ppa:landscape/self-hosted-24.04"
+    state: present
+  register: ppa_added
+
+- name: Update apt cache after adding PPA
+  apt:
+    update_cache: yes
+  when: ppa_added is changed
+
+- name: Install Landscape Server Quickstart
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  apt:
+    name: landscape-server-quickstart
+    state: present
+
+# Optional - automatically create self-signed SSL if you don't have one
+- name: Install certbot if Let's Encrypt is desired
+  apt:
+    name:
+      - certbot
+      - python3-certbot-apache
+    state: present
+  when: landscape_use_ssl | bool
+
+- name: Obtain Let's Encrypt SSL certificate (if public FQDN resolves)
+  command: >
+    certbot --non-interactive --apache --no-redirect
+            --agree-tos
+            --email {{ landscape_admin_email }}
+            --domains {{ landscape_hostname }}
+  args:
+    creates: /etc/letsencrypt/live/{{ landscape_hostname }}/fullchain.pem
+  when: landscape_use_ssl | bool
+
+- name: Render Landscape answers file
+  template:
+    src: landscape-answers.conf.j2
+    dest: "{{ landscape_answers_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Run Landscape quickstart script
+  command: >
+    landscape-server-quickstart --script {{ landscape_answers_path }}
+  args:
+    creates: /etc/landscape/service.conf
+
+- name: Ensure Apache is enabled and running
+  service:
+    name: apache2
+    state: started
+    enabled: yes
+  notify: restart apache

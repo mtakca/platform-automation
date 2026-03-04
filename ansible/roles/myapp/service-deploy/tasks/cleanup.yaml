@@ -1,0 +1,37 @@
+---
+- name: Remove existing cleanup service if present
+  ansible.builtin.command: docker service rm system-prune
+  failed_when: false
+  changed_when: false
+
+- name: Run system prune on all nodes
+  ansible.builtin.command: >
+    docker service create
+    --name system-prune
+    --mode global
+    --restart-condition none
+    --mount type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock
+    --entrypoint /bin/sh
+    docker:28.0
+    -c "sleep 20 && docker system prune --all --force --volumes && sleep 20"
+  register: cleanup_create
+  changed_when: cleanup_create.rc == 0
+
+- name: Wait for cleanup to complete
+  ansible.builtin.shell: |
+    timeout={{ service_cleanup_timeout }}
+    elapsed=0
+    while [ -n "$(docker service ps system-prune --filter 'desired-state=running' --quiet 2>/dev/null)" ]; do
+      if [ "$elapsed" -ge "$timeout" ]; then
+        echo "Timeout reached"
+        break
+      fi
+      sleep 5
+      elapsed=$((elapsed + 5))
+    done
+  changed_when: false
+
+- name: Remove cleanup service
+  ansible.builtin.command: docker service rm system-prune
+  failed_when: false
+  changed_when: false

@@ -1,0 +1,73 @@
+---
+# mount_disk.yaml - Process single disk
+# Variables: disk_name (sdb, sdc...), disk_index (0, 1, 2...)
+
+- name: Set mount path for disk {{ disk_name }}
+  ansible.builtin.set_fact:
+    current_mount_path: "/mnt/data{{ '%02d' | format(disk_index + 1) }}"
+    current_device: "/dev/{{ disk_name }}"
+
+- name: Check if {{ disk_name }} exists
+  ansible.builtin.stat:
+    path: "{{ current_device }}"
+  register: disk_stat
+
+- name: Check existing filesystem on {{ disk_name }}
+  ansible.builtin.command: blkid -s TYPE -o value {{ current_device }}
+  register: existing_fs
+  changed_when: false
+  failed_when: false
+  when: disk_stat.stat.exists
+
+- name: Check if {{ disk_name }} already mounted
+  ansible.builtin.command: findmnt -n -o TARGET {{ current_device }}
+  register: existing_mount
+  changed_when: false
+  failed_when: false
+  when: disk_stat.stat.exists
+
+- name: Format {{ disk_name }} with ext4
+  ansible.builtin.command: mkfs.ext4 -F {{ current_device }}
+  when:
+    - disk_stat.stat.exists
+    - existing_fs.stdout | default('') == ""
+    - existing_mount.stdout | default('') == ""
+
+- name: Create mount point {{ current_mount_path }}
+  ansible.builtin.file:
+    path: "{{ current_mount_path }}"
+    state: directory
+    mode: "0755"
+  when: disk_stat.stat.exists
+
+- name: Get UUID of {{ disk_name }}
+  ansible.builtin.command: blkid -s UUID -o value {{ current_device }}
+  register: disk_uuid
+  changed_when: false
+  when: disk_stat.stat.exists
+
+- name: Add fstab entry for {{ disk_name }}
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^UUID={{ disk_uuid.stdout }}"
+    line: "UUID={{ disk_uuid.stdout }} {{ current_mount_path }} ext4 defaults,nofail,x-systemd.device-timeout=45 0 0"
+    state: present
+  when:
+    - disk_stat.stat.exists
+    - disk_uuid.stdout | default('') != ""
+
+- name: Mount {{ disk_name }} to {{ current_mount_path }}
+  ansible.posix.mount:
+    path: "{{ current_mount_path }}"
+    src: "UUID={{ disk_uuid.stdout }}"
+    fstype: ext4
+    opts: defaults,nofail,x-systemd.device-timeout=45
+    state: mounted
+  when:
+    - disk_stat.stat.exists
+    - disk_uuid.stdout | default('') != ""
+
+- name: Show mount result for {{ disk_name }}
+  ansible.builtin.debug:
+    msg: "{{ disk_name }} -> {{ current_mount_path }}"
+  when: disk_stat.stat.exists

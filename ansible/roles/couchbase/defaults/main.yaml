@@ -1,0 +1,23 @@
+---
+# Couchbase Role Defaults (Generic)
+# Environment-specific values should be defined in inventory
+
+# Detect single node vs HA mode
+couchbase_is_ha: "{{ groups['couchbase'] | default([]) | length > 1 }}"
+couchbase_cluster_master: "{{ groups['couchbase'][0] if groups['couchbase'] | default([]) | length > 0 else inventory_hostname }}"
+couchbase_is_master: "{{ inventory_hostname == couchbase_cluster_master }}"
+
+# Data directories
+couchbase_data_dir: "/mnt/data01/couchbase/data"
+couchbase_index_dir: "{% if ansible_mounts | selectattr('mount', 'equalto', '/mnt/data02') | list | length > 0 %}/mnt/data02/couchbase/index{% else %}/mnt/data01/couchbase/index{% endif %}"
+
+# Couchbase version
+couchbase_version: "7.2.0"
+couchbase_package_url: "https://packages.couchbase.com/releases/{{ couchbase_version }}/couchbase-server-enterprise_{{ couchbase_version }}-1_amd64.deb"
+
+# Cluster configuration - SET IN INVENTORY
+couchbase_admin_user: "Administrator"
+couchbase_admin_password: ""
+couchbase_cluster_name: ""
+couchbase_cluster_ram_size: 2048
+couchbase_services: "data,index,query,fts"

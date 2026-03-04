@@ -1,0 +1,41 @@
+---
+# Portworx StorageClass — 3x Replication for Stateful Workloads
+# Provides cross-node data replication for zero-RPO failover.
+# Use for: PostgreSQL PVCs, Kafka logs, MinIO data.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: px-repl3-sc
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/portworx-volume
+parameters:
+  repl: "3"
+  io_profile: "db"
+  priority_io: "high"
+  snapshot_schedule: "periodic=60,5"
+  journal: "true"
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: Immediate
+---
+# Portworx StorageClass — Single Replica (Dev/Test)
+# Lower cost, no cross-node replication. For non-critical workloads only.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: px-repl1-dev
+  labels:
+    app.kubernetes.io/managed-by: platform-automation
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "false"
+provisioner: kubernetes.io/portworx-volume
+parameters:
+  repl: "1"
+  io_profile: "auto"
+  priority_io: "low"
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate

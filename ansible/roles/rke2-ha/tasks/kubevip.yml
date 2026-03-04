@@ -1,0 +1,12 @@
+---
+- name: Ensure manifests dir exists (RKE2 static manifests)
+  file:
+    path: /var/lib/rancher/rke2/server/manifests
+    state: directory
+    mode: "0755"
+
+- name: Render kube-vip manifest
+  template:
+    src: kube-vip.yaml.j2
+    dest: /var/lib/rancher/rke2/server/manifests/kube-vip.yaml
+    mode: "0644"

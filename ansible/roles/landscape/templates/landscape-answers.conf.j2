@@ -1,0 +1,8 @@
+fqdn = {{ landscape_hostname }}
+email = {{ landscape_admin_email }}
+admin_password = {{ landscape_admin_password }}
+db_name = {{ landscape_db_name }}
+db_user = {{ landscape_db_user }}
+db_password = {{ landscape_db_password }}
+ssl = {{ 'true' if landscape_use_ssl else 'false' }}
+version = {{ landscape_version }}

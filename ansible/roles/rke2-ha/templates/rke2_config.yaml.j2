@@ -1,0 +1,28 @@
+{% if rke2_role == 'master' %}
+{% if cluster_init %}
+cluster-init: true
+{% else %}
+server: https://{{ k8s_api_vip }}:9345
+token: {{ rke2_token }}
+{% endif %}
+
+tls-san:
+  - {{ k8s_cluster_name }}.local
+  - {{ k8s_api_vip }}
+{% for host in groups['kube_control_plane'] %}
+  - {{ hostvars[host].ansible_host }}
+{% endfor %}
+
+write-kubeconfig-mode: "0644"
+etcd-expose-metrics: true
+cni:
+  - {{ cni_plugin }}
+disable:
+{% for d in disable_components %}
+  - {{ d }}
+{% endfor %}
+{% else %}
+server: https://{{ k8s_api_vip }}:9345
+token: {{ rke2_token }}
+write-kubeconfig-mode: "0644"
+{% endif %}

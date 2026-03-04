@@ -1,0 +1,25 @@
+---
+- name: Install Landscape Client
+  apt:
+    name: landscape-client
+    state: present
+
+- name: Register Landscape Client
+  command: >
+    landscape-config
+    --computer-title "{{ inventory_hostname }}"
+    --account-name "{{ landscape_account_name }}"
+    --url "{{ landscape_url }}/message-system"
+    --ping-url "{{ landscape_url }}/ping"
+    --script-users root
+    --silent
+  args:
+    creates: /etc/landscape/client.conf
+  register: landscape_register
+  failed_when: landscape_register.rc != 0 and "already registered" not in landscape_register.stderr
+
+- name: Enable Landscape Service
+  service:
+    name: landscape-client
+    state: started
+    enabled: yes

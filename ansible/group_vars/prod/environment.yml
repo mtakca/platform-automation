@@ -1,0 +1,23 @@
+---
+# Production Environment Variables
+
+# Network - CHANGE THESE FOR YOUR ENVIRONMENT
+network_cidr: "10.XXX.0.0/24"
+network_gateway: "10.XXX.0.1"
+
+# DNS
+dns_forwarders:
+  - "10.0.X.X"
+  - "10.0.X.X"
+  - "8.8.8.8"
+
+# Domain
+base_domain: "example.com"
+environment_prefix: "myapp-prod"
+cluster_name: "prod-myapp-cluster"
+
+# Trusted networks
+trusted_networks:
+  - "{{ network_cidr }}"
+  - "localhost"
+  - "localnets"

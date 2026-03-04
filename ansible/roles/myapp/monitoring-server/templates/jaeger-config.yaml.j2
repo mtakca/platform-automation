@@ -1,0 +1,65 @@
+service:
+  extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [jaeger_storage_exporter]
+
+extensions:
+  healthcheckv2:
+    use_v2: true
+    http:
+
+  jaeger_query:
+    storage:
+      traces: some_storage
+
+  jaeger_storage:
+    backends:
+      some_storage:
+        elasticsearch:
+          server_urls:
+            - ${env:ELASTIC_SEARCH_HOST}
+          auth:
+            basic:
+              username: ${env:ELASTIC_SEARCH_USERNAME}
+              password: ${env:ELASTIC_SEARCH_PASSWORD}
+          indices:
+            index_prefix: "jaeger-main"
+            spans:
+              date_layout: "2006-01-02"
+              rollover_frequency: "day"
+              shards: 5
+              replicas: 0
+            services:
+              date_layout: "2006-01-02"
+              rollover_frequency: "day"
+              shards: 5
+              replicas: 0
+            dependencies:
+              date_layout: "2006-01-02"
+              rollover_frequency: "day"
+              shards: 5
+              replicas: 0
+            sampling:
+              date_layout: "2006-01-02"
+              rollover_frequency: "day"
+              shards: 5
+              replicas: 0
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+        max_recv_msg_size_mib: 100
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+
+exporters:
+  jaeger_storage_exporter:
+    trace_storage: some_storage

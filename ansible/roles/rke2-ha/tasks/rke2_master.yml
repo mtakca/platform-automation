@@ -1,0 +1,87 @@
+---
+# RKE2 HA Master Tasks
+# Supports: First master (cluster-init) + Additional masters (join)
+
+- name: Derive master role flags
+  set_fact:
+    cluster_init: "{{ inventory_hostname == groups['kube_control_plane'][0] }}"
+    rke2_role: "master"
+
+- name: Ensure RKE2 config dir exists
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: "0755"
+
+# kube-vip MUST be placed before first master starts, otherwise VIP may not be announced correctly
+- name: Install kube-vip manifest (masters only)
+  include_tasks: kubevip.yml
+
+# For non-init masters, token is needed before rendering config
+- name: Get join token for non-init masters
+  include_tasks: token.yml
+  when: not cluster_init
+
+- name: Install RKE2 (server)
+  shell: curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION={{ rke2_version }} sh -
+  args:
+    creates: /usr/local/bin/rke2
+
+- name: Render RKE2 config (master)
+  template:
+    src: rke2_config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0644"
+  notify: restart rke2-server
+
+- name: Enable and start rke2-server
+  systemd:
+    name: rke2-server
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# First master: Wait for K8s API and VIP to be ready
+- name: Wait for K8s API to be ready (first master only)
+  wait_for:
+    host: 127.0.0.1
+    port: 6443
+    timeout: 300
+    state: started
+  when: cluster_init
+
+- name: Wait for kubeconfig to exist (first master only)
+  wait_for:
+    path: /etc/rancher/rke2/rke2.yaml
+    state: present
+    timeout: 120
+  when: cluster_init
+
+- name: Wait for kube-vip to acquire VIP (first master only)
+  command: >
+    /var/lib/rancher/rke2/bin/kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml
+    get pods -n kube-system -l app.kubernetes.io/name=kube-vip -o jsonpath='{.items[0].status.phase}'
+  register: kubevip_status
+  until: kubevip_status.stdout == "Running" or kubevip_status.rc != 0
+  retries: 30
+  delay: 10
+  when: cluster_init
+  changed_when: false
+  failed_when: false
+
+- name: Verify VIP is reachable (first master only)
+  wait_for:
+    host: "{{ k8s_api_vip }}"
+    port: 6443
+    timeout: 300
+    state: started
+  when: cluster_init
+
+# usability: kubectl path + KUBECONFIG for admins
+- name: Add RKE2 env to /etc/profile.d/rke2.sh
+  copy:
+    dest: /etc/profile.d/rke2.sh
+    mode: "0644"
+    content: |
+      export PATH="$PATH:/var/lib/rancher/rke2/bin"
+      export KUBECONFIG="/etc/rancher/rke2/rke2.yaml"

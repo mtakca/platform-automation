@@ -1,0 +1,31 @@
+---
+- name: Check if already part of swarm
+  ansible.builtin.command: docker info --format '{{ "{{" }} .Swarm.LocalNodeState {{ "}}" }}'
+  register: swarm_state
+  changed_when: false
+
+- name: Set swarm active fact
+  ansible.builtin.set_fact:
+    swarm_active: "{{ swarm_state.stdout == 'active' }}"
+
+- name: Include init tasks
+  ansible.builtin.include_tasks: init.yaml
+  when: swarm_mode == 'init' and not swarm_active
+
+- name: Include manager join tasks
+  ansible.builtin.include_tasks: join-manager.yaml
+  when: swarm_mode == 'manager' and not swarm_active
+
+- name: Include worker join tasks
+  ansible.builtin.include_tasks: join-worker.yaml
+  when: swarm_mode == 'worker' and not swarm_active
+
+- name: Configure swarm settings
+  ansible.builtin.command: >
+    docker swarm update --task-history-limit={{ swarm_task_history_limit }}
+  when: swarm_mode in ['init', 'manager']
+  changed_when: false
+
+- name: Apply node labels
+  ansible.builtin.include_tasks: labels.yaml
+  when: swarm_labels | length > 0

@@ -1,0 +1,11 @@
+---
+# UAT Kubernetes Configuration Override
+# This file overrides the default CNI (calico) with Cilium for UAT environment
+
+# CNI Plugin for UAT - Cilium
+kube_network_plugin: cilium
+
+# Cilium specific settings for UAT
+cilium_enable_hubble: true
+cilium_kube_proxy_replacement: "strict"
+cilium_enable_l2_announcements: true

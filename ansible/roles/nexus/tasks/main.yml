@@ -1,0 +1,122 @@
+---
+- name: Install OpenJDK 8
+  apt:
+    name: openjdk-8-jdk
+    state: present
+    update_cache: yes
+
+- name: Create Nexus user
+  user:
+    name: nexus
+    system: yes
+    home: /opt/nexus
+
+- name: Create Nexus data directory
+  file:
+    path: /opt/sonatype-work
+    state: directory
+    owner: nexus
+    group: nexus
+    mode: '0755'
+
+# External Disk Handling
+- name: Check for external data disk
+  stat:
+    path: /dev/sdb
+  register: disk_sdb
+
+- name: Create partition on data disk
+  parted:
+    device: /dev/sdb
+    number: 1
+    state: present
+    fs_type: ext4
+    label: gpt
+  when: disk_sdb.stat.exists
+
+- name: Format data disk
+  filesystem:
+    fstype: ext4
+    dev: /dev/sdb1
+  when: disk_sdb.stat.exists
+
+- name: Mount data disk to /opt/sonatype-work
+  mount:
+    path: /opt/sonatype-work
+    src: /dev/sdb1
+    fstype: ext4
+    state: mounted
+  when: disk_sdb.stat.exists
+
+- name: Fix permissions after mount
+  file:
+    path: /opt/sonatype-work
+    owner: nexus
+    group: nexus
+    mode: '0755'
+    recurse: yes
+  when: disk_sdb.stat.exists
+
+- name: Download Nexus
+  get_url:
+    url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+    dest: /tmp/nexus.tar.gz
+
+- name: Extract Nexus
+  unarchive:
+    src: /tmp/nexus.tar.gz
+    dest: /opt
+    remote_src: yes
+    owner: nexus
+    group: nexus
+    creates: /opt/nexus-3.60.0-02 # Approximate check
+
+- name: Find Nexus directory
+  find:
+    paths: /opt
+    patterns: "nexus-*"
+    file_type: directory
+  register: nexus_dir
+
+- name: Symlink Nexus directory
+  file:
+    src: "{{ nexus_dir.files[0].path }}"
+    dest: /opt/nexus
+    state: link
+    owner: nexus
+    group: nexus
+  when: nexus_dir.matched > 0
+
+- name: Configure Nexus run_as_user
+  lineinfile:
+    path: /opt/nexus/bin/nexus.rc
+    regexp: '^#?run_as_user'
+    line: 'run_as_user="nexus"'
+
+- name: Create Nexus systemd service
+  copy:
+    dest: /etc/systemd/system/nexus.service
+    content: |
+      [Unit]
+      Description=nexus service
+      After=network.target
+
+      [Service]
+      Type=forking
+      LimitNOFILE=65536
+      User=nexus
+      Group=nexus
+      ExecStart=/opt/nexus/bin/nexus start
+      ExecStop=/opt/nexus/bin/nexus stop
+      User=nexus
+      Restart=on-abort
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: restart nexus
+
+- name: Start Nexus service
+  service:
+    name: nexus
+    state: started
+    enabled: yes

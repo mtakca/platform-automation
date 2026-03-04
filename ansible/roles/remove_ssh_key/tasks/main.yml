@@ -1,0 +1,22 @@
+---
+- name: Precheck | Fail if no users provided
+  fail:
+    msg: "users_to_remove must be defined and not empty"
+  when: users_to_remove is not defined or users_to_remove | length == 0
+  tags: precheck
+
+- name: Include remove task set for each user
+  include_tasks: user_remove_block.yml
+  loop: "{{ users_to_remove }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Her kullanıcı için sudoers dosyasını doğrula (tek tek)
+- name: Validate remaining sudoers files
+  shell: "for f in /etc/sudoers.d/*; do visudo -cf \"$f\" || exit 1; done"
+  args:
+    executable: /bin/bash
+  become: true
+  register: visudo_check
+  changed_when: false
+  failed_when: visudo_check.rc != 0

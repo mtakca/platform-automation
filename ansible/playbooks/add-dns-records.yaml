@@ -1,0 +1,72 @@
+---
+- name: Add VIP DNS Records via nsupdate
+  hosts: 34-uat-myapp-myapp-dns-01
+  become: true
+  vars:
+    dns_server: 10.0.X.X
+    zone: example.com
+    tsig_key_file: /etc/bind/keys/externaldns-key.key
+    vip_records:
+      # Main entry point
+      - name: uat-myapp
+        ip: 10.0.X.X
+      - name: uat-myapp-postgresql
+        ip: 10.0.X.X
+      - name: uat-myapp-redis
+        ip: 10.0.X.X
+      - name: uat-myapp-rabbitmq
+        ip: 10.0.X.X
+      - name: uat-myapp-minio
+        ip: 10.0.X.X
+      # Single node services
+      - name: uat-myapp-elk
+        ip: 10.0.X.X
+      - name: uat-myapp-mongodb
+        ip: 10.0.X.X
+      - name: uat-myapp-milvus
+        ip: 10.0.X.X
+      - name: uat-myapp-monitoring
+        ip: 10.0.X.X
+
+  tasks:
+    - name: Install dnsutils
+      apt:
+        name: dnsutils
+        state: present
+
+    - name: Create nsupdate script
+      copy:
+        dest: /tmp/dns_updates.txt
+        content: |
+          server {{ dns_server }}
+          zone {{ zone }}
+          {% for record in vip_records %}
+          update delete {{ record.name }}.{{ zone }} A
+          update add {{ record.name }}.{{ zone }} 300 A {{ record.ip }}
+          {% endfor %}
+          send
+        mode: "0644"
+
+    - name: Execute nsupdate with TSIG key
+      command: nsupdate -k {{ tsig_key_file }} /tmp/dns_updates.txt
+      register: nsupdate_result
+
+    - name: Show result
+      debug:
+        msg: "DNS records updated successfully"
+      when: nsupdate_result.rc == 0
+
+    - name: Verify records
+      command: "dig @{{ dns_server }} {{ item.name }}.{{ zone }} +short"
+      loop: "{{ vip_records }}"
+      register: dig_results
+
+    - name: Display verification
+      debug:
+        msg: "{{ item.item.name }}.{{ zone }} -> {{ item.stdout }}"
+      loop: "{{ dig_results.results }}"
+
+    - name: Cleanup
+      file:
+        path: /tmp/dns_updates.txt
+        state: absent

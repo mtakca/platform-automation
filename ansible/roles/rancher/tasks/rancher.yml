@@ -1,0 +1,26 @@
+- name: Run Rancher container
+  docker_container:
+    name: "{{ rancher_container_name }}"
+    image: "{{ rancher_image }}"
+    pull: true
+    recreate: true
+    restart_policy: unless-stopped
+    privileged: true
+    published_ports:
+      - "{{ rancher_http_port }}:80"
+      - "{{ rancher_https_port }}:443"
+    volumes:
+      - "{{ rancher_data_dir }}:/var/lib/rancher"
+      - "{{ rancher_certs_dir }}:/etc/rancher/ssl"
+      - "{{ rancher_audit_dir }}:/var/log/auditlog"
+    env:
+      CATTLE_BOOTSTRAP_PASSWORD: "{{ rancher_bootstrap_password }}"
+      CATTLE_SERVER_URL: "https://{{ rancher_hostname }}"
+      CATTLE_TLS_SOURCE: "{{ rancher_tls_source }}"
+    command:
+      - "--no-cacerts"
+      - "--audit-level={{ rancher_audit_level }}"
+      - "--audit-log-maxage={{ rancher_audit_log_maxage }}"
+      - "--audit-log-maxsize={{ rancher_audit_log_maxsize }}"
+      - "--audit-log-maxbackup={{ rancher_audit_log_maxbackup }}"
+    state: started

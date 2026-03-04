@@ -1,0 +1,73 @@
+---
+# GitHub Container Registry PAT
+ghcr_pat: "{{ vault_ghcr_pat | default('') }}"
+
+# ACR Registry (Myapp Production)
+acr_registry: "devutilityacr.azurecr.io"
+acr_username: "{{ vault_acr_username | default('') }}"
+default_password: "{{ vault_default_password | default('') }}"
+
+# Base volume path
+service_base_volume_path: "/home/myapp/data"
+
+# Default network
+service_default_network: "myapp-network"
+
+# Health check defaults
+service_health_interval: "30s"
+service_health_retries: 3
+service_health_start_period: "10s"
+service_health_timeout: "10s"
+
+# Update settings
+service_update_delay: "10s"
+service_update_order: "start-first"
+service_update_failure_action: "rollback"
+
+# Cleanup before deploy
+service_cleanup_enabled: true
+service_cleanup_timeout: 300
+
+# Dynamic service IPs from inventory
+# PostgreSQL VIP (defaults to first postgresql host)
+db_host: "{{ hostvars[groups['postgresql'][0]]['keepalived_vip'] | default(hostvars[groups['postgresql'][0]]['ansible_host']) }}"
+# MinIO (first minio host)
+storage_host: "{{ hostvars[groups['minio'][0]]['ansible_host'] }}"
+# RabbitMQ VIP
+rabbitmq_host: "{{ hostvars[groups['rabbitmq'][0]]['keepalived_vip'] | default(hostvars[groups['rabbitmq'][0]]['ansible_host']) }}"
+# Milvus
+milvus_host: "{{ hostvars[groups['myapp_milvus'][0]]['ansible_host'] }}"
+# Redis VIP
+redis_host: "{{ hostvars[groups['redis'][0]]['keepalived_vip'] | default(hostvars[groups['redis'][0]]['ansible_host']) }}"
+
+# Environment variables for services (dynamic IPs)
+service_env_vars:
+  SECRET_KEY: "{{ vault_secret_key | default('q+qqluou_@1o4_*hd2uzko^wc*$*-1mjf6cloq-6rbe+uz') }}"
+  DEBUG: "False"
+  LOGLEVEL: "WARNING"
+  GUNICORN_WORKER: "2"
+  DB_NAME: "myapp"
+  DB_USER: "myapp"
+  DB_PASSWORD: "{{ vault_db_password | default('DefaultPassword123!') }}"
+  DB_HOST: "{{ db_host }}"
+  DB_PORT: "6432"
+  USE_PGBOUNCER: "True"
+  STORAGE_ACCESS_KEY: "minioadmin"
+  STORAGE_SECRET_KEY: "{{ vault_storage_secret | default('DefaultPassword123!') }}"
+  STORAGE_HOST: "{{ storage_host }}"
+  STORAGE_PORT: "9000"
+  STORAGE_BUCKET_NAME: "myapp-documents"
+  STORAGE_PROTOCOL: "http"
+  RABBITMQ_HOST: "{{ rabbitmq_host }}"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USER: "myapp"
+  RABBITMQ_PASSWORD: "{{ vault_rabbitmq_password | default('DefaultPassword123!') }}"
+  RABBITMQ_VHOST: "myapp"
+  MILVUS_URI: "http://{{ milvus_host }}:19530"
+  MILVUS_COLLECTION_NAME: "example_user_test"
+  REDIS_HOST: "{{ redis_host }}"
+  REDIS_PORT: "6379"
+  REDIS_PASSWORD: "{{ vault_redis_password | default('DefaultPassword123!') }}"
+
+# Service definitions (override in inventory)
+swarm_services: []

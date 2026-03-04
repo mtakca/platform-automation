@@ -1,0 +1,42 @@
+---
+# RKE2 Worker Node Tasks
+
+- name: Derive worker role flags
+  set_fact:
+    rke2_role: "worker"
+
+- name: Ensure RKE2 config dir exists
+  file:
+    path: /etc/rancher/rke2
+    state: directory
+    mode: "0755"
+
+- name: Get join token for workers
+  include_tasks: token.yml
+
+- name: Install RKE2 (agent)
+  shell: curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE=agent INSTALL_RKE2_VERSION={{ rke2_version }} sh -
+  args:
+    creates: /usr/local/bin/rke2
+
+- name: Render RKE2 config (worker)
+  template:
+    src: rke2_config.yaml.j2
+    dest: /etc/rancher/rke2/config.yaml
+    mode: "0644"
+  notify: restart rke2-agent
+
+- name: Enable and start rke2-agent
+  systemd:
+    name: rke2-agent
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for rke2-agent to be running
+  systemd:
+    name: rke2-agent
+  register: agent_status
+  until: agent_status.status.ActiveState == "active"
+  retries: 30
+  delay: 10

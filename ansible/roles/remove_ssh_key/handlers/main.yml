@@ -1,0 +1,13 @@
+---
+# Her kullanıcıya özel sudoers doğrulaması
+- name: Validate sudoers file for {{ item.name }}
+  command: "visudo -cf /etc/sudoers.d/{{ item.name }}"
+  become: true
+  ignore_errors: true
+
+# SSH servisini yeniden başlatmak istersen (opsiyonel)
+- name: Restart sshd
+  service:
+    name: "{{ 'sshd' if ansible_facts['os_family'] == 'RedHat' else 'ssh' }}"
+    state: restarted
+  become: true

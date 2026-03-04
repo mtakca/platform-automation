@@ -1,0 +1,32 @@
+lowercaseOutputName: true
+rules:
+- pattern: kafka.controller<type=KafkaController, name=(.+)><>Value
+  name: kafka_controller_$1
+  type: GAUGE
+- pattern: kafka.controller<type=ControllerStats, name=(.+)><>Value
+  name: kafka_controller_stats_$1
+  type: GAUGE
+- pattern: kafka.server<type=ReplicaManager, name=(.+)><>(Value|OneMinuteRate)
+  name: kafka_server_replicamanager_$1
+  type: GAUGE
+- pattern: kafka.network<type=RequestMetrics, name=RequestsPerSec, request=(.+)><>OneMinuteRate
+  name: kafka_network_requestmetrics_requestspersec_$1
+  type: GAUGE
+- pattern: kafka.network<type=SocketServer, name=NetworkProcessorAvgIdlePercent><>Value
+  name: kafka_network_socketserver_networkprocessoravgidlepercent
+  type: GAUGE
+- pattern: kafka.server<type=ReplicaFetcherManager, name=MaxLag, clientId=(.+)><>Value
+  name: kafka_server_replicafetchermanager_maxlag_$1
+  type: GAUGE
+- pattern: kafka.server<type=KafkaRequestHandlerPool, name=RequestHandlerAvgIdlePercent><>OneMinuteRate
+  name: kafka_server_kafkarequesthandlerpool_requesthandleravgidlepercent
+  type: GAUGE
+- pattern: kafka.coordinator.group<type=GroupMetadataManager, name=(.+)><>Value
+  name: kafka_coordinator_group_groupmetadatamanager_$1
+  type: GAUGE
+- pattern: kafka.log<type=Log, name=(.+), topic=(.+), partition=(.+)><>Value
+  name: kafka_log_$1
+  labels:
+    topic: $2
+    partition: $3
+  type: GAUGE

@@ -1,0 +1,299 @@
+---
+# Myapp Services HA Playbook
+# Deploys Keepalived on Redis, MinIO, and PostgreSQL clusters
+
+- name: Deploy Keepalived for Redis HA
+  hosts: redis
+  become: yes
+  tasks:
+    - name: Install Keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure Keepalived for Redis
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        content: |
+          global_defs {
+              router_id REDIS_{{ inventory_hostname_short }}
+          }
+
+          vrrp_script chk_redis {
+              script "redis-cli ping"
+              interval 2
+              weight 2
+          }
+
+          vrrp_instance VI_REDIS {
+              state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+              interface {{ keepalived_interface | default('eth0') }}
+              virtual_router_id {{ keepalived_vrid }}
+              priority {{ keepalived_priority }}
+              advert_int 1
+
+              authentication {
+                  auth_type PASS
+                  auth_pass redis_ha
+              }
+
+              virtual_ipaddress {
+                  {{ keepalived_vip }}
+              }
+
+              track_script {
+                  chk_redis
+              }
+          }
+      notify: restart keepalived
+
+    - name: Enable Keepalived
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart keepalived
+      service:
+        name: keepalived
+        state: restarted
+
+- name: Deploy Keepalived for MinIO HA
+  hosts: minio
+  become: yes
+  tasks:
+    - name: Install Keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure Keepalived for MinIO
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        content: |
+          global_defs {
+              router_id MINIO_{{ inventory_hostname_short }}
+          }
+
+          vrrp_script chk_minio {
+              script "curl -sf http://localhost:9000/minio/health/live"
+              interval 2
+              weight 2
+          }
+
+          vrrp_instance VI_MINIO {
+              state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+              interface {{ keepalived_interface | default('eth0') }}
+              virtual_router_id {{ keepalived_vrid }}
+              priority {{ keepalived_priority }}
+              advert_int 1
+
+              authentication {
+                  auth_type PASS
+                  auth_pass minio_ha
+              }
+
+              virtual_ipaddress {
+                  {{ keepalived_vip }}
+              }
+
+              track_script {
+                  chk_minio
+              }
+          }
+      notify: restart keepalived
+
+    - name: Enable Keepalived
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart keepalived
+      service:
+        name: keepalived
+        state: restarted
+
+- name: Deploy Keepalived for PostgreSQL HA
+  hosts: postgres
+  become: yes
+  tasks:
+    - name: Install Keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure Keepalived for PostgreSQL/Patroni
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        content: |
+          global_defs {
+              router_id PGSQL_{{ inventory_hostname_short }}
+          }
+
+          vrrp_script chk_patroni {
+              script "curl -sf http://localhost:8008/leader"
+              interval 2
+              weight 2
+              fall 2
+              rise 2
+          }
+
+          vrrp_instance VI_PGSQL {
+              state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+              interface {{ keepalived_interface | default('eth0') }}
+              virtual_router_id {{ keepalived_vrid }}
+              priority {{ keepalived_priority }}
+              advert_int 1
+
+              authentication {
+                  auth_type PASS
+                  auth_pass pgsql_ha
+              }
+
+              virtual_ipaddress {
+                  {{ keepalived_vip }}
+              }
+
+              track_script {
+                  chk_patroni
+              }
+          }
+      notify: restart keepalived
+
+    - name: Enable Keepalived
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart keepalived
+      service:
+        name: keepalived
+        state: restarted
+
+- name: Deploy Keepalived for RabbitMQ HA
+  hosts: rabbitmq
+  become: yes
+  tasks:
+    - name: Install Keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure Keepalived for RabbitMQ
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        content: |
+          global_defs {
+              router_id RABBITMQ_{{ inventory_hostname_short }}
+          }
+
+          vrrp_script chk_rabbitmq {
+              script "docker exec rabbitmq rabbitmqctl status"
+              interval 5
+              weight 2
+              fall 3
+              rise 2
+          }
+
+          vrrp_instance VI_RABBITMQ {
+              state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+              interface {{ keepalived_interface | default('ens192') }}
+              virtual_router_id {{ keepalived_vrid }}
+              priority {{ keepalived_priority }}
+              advert_int 1
+
+              authentication {
+                  auth_type PASS
+                  auth_pass rabbitmq_ha
+              }
+
+              virtual_ipaddress {
+                  {{ keepalived_vip }}
+              }
+
+              track_script {
+                  chk_rabbitmq
+              }
+          }
+      notify: restart keepalived
+
+    - name: Enable Keepalived
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart keepalived
+      service:
+        name: keepalived
+        state: restarted
+
+- name: Deploy Keepalived for HA PostgreSQL
+  hosts: ha-postgresql
+  become: yes
+  tasks:
+    - name: Install Keepalived
+      apt:
+        name: keepalived
+        state: present
+        update_cache: yes
+
+    - name: Configure Keepalived for HA PostgreSQL
+      copy:
+        dest: /etc/keepalived/keepalived.conf
+        content: |
+          global_defs {
+              router_id HAPGSQL_{{ inventory_hostname_short }}
+          }
+
+          vrrp_script chk_patroni {
+              script "curl -sf http://localhost:8008/leader"
+              interval 5
+              weight 2
+              fall 3
+              rise 2
+          }
+
+          vrrp_instance VI_HAPGSQL {
+              state {{ 'MASTER' if keepalived_priority == 100 else 'BACKUP' }}
+              interface {{ keepalived_interface | default('ens192') }}
+              virtual_router_id {{ keepalived_vrid }}
+              priority {{ keepalived_priority }}
+              advert_int 1
+
+              authentication {
+                  auth_type PASS
+                  auth_pass hapgsql_ha
+              }
+
+              virtual_ipaddress {
+                  {{ keepalived_vip }}
+              }
+
+              track_script {
+                  chk_patroni
+              }
+          }
+      notify: restart keepalived
+
+    - name: Enable Keepalived
+      service:
+        name: keepalived
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart keepalived
+      service:
+        name: keepalived
+        state: restarted

@@ -1,0 +1,13 @@
+---
+- name: Bootstrap control plane (kube-vip + rke2-server)
+  hosts: kube_control_plane
+  become: true
+  serial: 1
+  roles:
+    - rke2-ha
+
+- name: Join workers (rke2-agent)
+  hosts: kube_node
+  become: true
+  roles:
+    - rke2-ha

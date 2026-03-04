@@ -1,0 +1,10 @@
+---
+- name: Restart IPA
+  service:
+    name: ipa
+    state: restarted
+
+- name: Restart named
+  service:
+    name: named
+    state: restarted

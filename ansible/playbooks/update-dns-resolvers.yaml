@@ -1,0 +1,54 @@
+---
+- name: Update DNS Servers on Myapp Hosts
+  hosts: all:!dns
+  become: true
+  vars:
+    dns_servers:
+      - 10.0.X.X # Myapp DNS VIP
+      - 10.0.X.X # DevOps DNS VIP (fallback)
+    search_domains:
+      - uat-example_tenant.local
+
+  tasks:
+    - name: Update resolv.conf via netplan
+      block:
+        - name: Find netplan config file
+          find:
+            paths: /etc/netplan
+            patterns: "*.yaml"
+          register: netplan_files
+
+        - name: Read current netplan config
+          slurp:
+            src: "{{ netplan_files.files[0].path }}"
+          register: netplan_content
+          when: netplan_files.files | length > 0
+
+        - name: Parse netplan YAML
+          set_fact:
+            netplan_config: "{{ netplan_content.content | b64decode | from_yaml }}"
+          when: netplan_content is defined
+
+        - name: Update DNS in netplan config
+          copy:
+            dest: "{{ netplan_files.files[0].path }}"
+            content: |
+              network:
+                version: 2
+                ethernets:
+                  ens192:
+                    dhcp4: false
+                    addresses:
+                      - {{ ansible_default_ipv4.address }}/24
+                    routes:
+                      - to: default
+                        via: {{ ansible_default_ipv4.gateway }}
+                    nameservers:
+                      addresses: {{ dns_servers | to_json }}
+                      search: {{ search_domains | to_json }}
+          notify: apply netplan
+          when: netplan_files.files | length > 0
+
+  handlers:
+    - name: apply netplan
+      command: netplan apply

@@ -1,0 +1,26 @@
+---
+# Role: mount-data-disks
+# Auto-formats and mounts ALL secondary disks to /data01, /data02, etc.
+
+- name: Get list of all block devices
+  ansible.builtin.shell: |
+    lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}' | grep -v "^sda$" | grep -v "^fd0$" | sort
+  register: secondary_disks
+  changed_when: false
+
+- name: Display detected secondary disks
+  ansible.builtin.debug:
+    msg: "Secondary disks found: {{ secondary_disks.stdout_lines }}"
+
+- name: Skip if no secondary disks
+  ansible.builtin.debug:
+    msg: "No secondary disks found on {{ inventory_hostname }}"
+  when: secondary_disks.stdout_lines | length == 0
+
+- name: Process each secondary disk
+  ansible.builtin.include_tasks: mount_disk.yaml
+  loop: "{{ secondary_disks.stdout_lines }}"
+  loop_control:
+    index_var: disk_index
+    loop_var: disk_name
+  when: secondary_disks.stdout_lines | length > 0

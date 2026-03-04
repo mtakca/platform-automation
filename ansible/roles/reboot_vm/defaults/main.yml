@@ -1,0 +1,3 @@
+reboot_timeout: 600
+pre_reboot_delay: 5
+post_reboot_delay: 10

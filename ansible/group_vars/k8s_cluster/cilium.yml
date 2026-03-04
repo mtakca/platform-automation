@@ -1,0 +1,72 @@
+---
+# Cilium CNI Configuration
+# Reference: kubespray/roles/network_plugin/cilium/defaults/main.yml
+
+# Cilium version
+cilium_version: "1.15.0"
+
+# Enable Hubble (observability)
+cilium_enable_hubble: true
+cilium_enable_hubble_ui: true
+cilium_hubble_install: true
+
+# Tunnel mode (vxlan or geneve)
+cilium_tunnel_mode: vxlan
+
+# IPAM mode
+cilium_ipam_mode: cluster-pool
+
+# Operator replicas
+cilium_operator_replicas: 2
+
+# Prometheus metrics (for monitoring integration)
+cilium_enable_prometheus: true
+
+# Identity allocation mode
+cilium_identity_allocation_mode: crd
+
+# IMPORTANT: Keep kube-proxy (don't replace it)
+# This avoids the "auto" API server discovery issue
+# IMPORTANT: Enable kube-proxy replacement for proper Gateway API support
+# We have explicit k8sServiceHost/Port configured below to avoid discovery issues
+cilium_kube_proxy_replacement: true
+
+# =============================================================================
+# L2 LOAD BALANCER (Cilium L2 Announcements)
+# Replaces MetalLB for LoadBalancer service type
+# =============================================================================
+cilium_l2announcements: true
+cilium_l2_neighbor_discovery: true
+
+# =============================================================================
+# GATEWAY API & INGRESS CONTROLLER
+# Replaces ingress-nginx with Cilium native ingress
+# =============================================================================
+
+# Enable Cilium Ingress Controller
+cilium_ingress_controller_enabled: true
+cilium_ingress_controller_loadbalancer_mode: dedicated
+cilium_ingress_controller_default: true
+
+# Enable Gateway API (Kubernetes standard)
+cilium_gateway_api_enabled: true
+
+# L7 Load Balancing with Envoy
+cilium_enable_l7_proxy: true
+
+# BPF masquerade enabled for performance (works with kube-proxy replacement)
+cilium_enable_bpf_masquerade: true
+
+# =============================================================================
+# EXPLICIT API SERVER CONFIG (Dynamic - from inventory)
+# Uses variables from group_vars/all/environment.yml
+# =============================================================================
+cilium_config_extra_vars:
+  # API Server connection (required for Cilium agent bootstrap)
+  k8s-service-host: "{{ kube_apiserver_ip }}"
+  k8s-service-port: "{{ kube_apiserver_port }}"
+  # NodePort required for Gateway API support
+  enable-node-port: "true"
+  # BPF masquerade must be true when kubeProxyReplacement is true
+  enable-bpf-masquerade: "true"
+  # Operator env vars are handled by template using kube_apiserver_ip variable

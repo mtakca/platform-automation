@@ -1,0 +1,44 @@
+---
+- name: Setup Load Balancers
+  hosts: haproxy
+  become: true
+  vars:
+    # Keepalived Config
+    keepalived_router_id_global: "LVS_DMZ"
+    keepalived_instances:
+      - name: VI_DMZ
+        state: "{{ 'MASTER' if inventory_hostname == groups['haproxy'][0] else 'BACKUP' }}"
+        interface: "{{ ansible_default_ipv4.interface }}"
+        virtual_router_id: 51
+        priority: "{{ 100 if inventory_hostname == groups['haproxy'][0] else 90 }}"
+        auth_pass: "{{ vault_keepalived_auth_pass | default('CHANGE_ME') }}"
+        virtual_ipaddresses:
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+          - "10.0.X.X/24"
+        track_scripts:
+          - chk_haproxy
+        unicast_src_ip: "{{ ansible_default_ipv4.address }}"
+        unicast_peers: "{{ groups['haproxy'] | map('extract', hostvars, ['ansible_default_ipv4', 'address']) | list | difference([ansible_default_ipv4.address]) }}"
+
+    # HAProxy Config
+    haproxy_services:
+      - name: kube_api
+        bind: "*:6443"
+        mode: tcp
+        balance: roundrobin
+        options:
+          - tcp-check
+        backend_group: k8s-controller
+        backend_port: 6443
+
+  roles:
+    - haproxy
+    - keepalived

@@ -1,0 +1,129 @@
+---
+- name: Install dependencies
+  apt:
+    name:
+      - curl
+      - lsb-release
+      - gnupg
+    state: present
+    update_cache: yes
+
+- name: Download Couchbase Release Package
+  get_url:
+    url: https://packages.couchbase.com/releases/couchbase-release/couchbase-release-1.0-amd64.deb
+    dest: /tmp/couchbase-release.deb
+
+- name: Install Couchbase Release Package
+  apt:
+    deb: /tmp/couchbase-release.deb
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install Couchbase Server 7.2.5 (compatible with x86_64 v2)
+  apt:
+    name: "couchbase-server=7.2.5*"
+    state: present
+    update_cache: yes
+
+- name: Ensure Couchbase service is started and enabled
+  service:
+    name: couchbase-server
+    state: started
+    enabled: yes
+
+- name: Wait for Couchbase to be ready
+  wait_for:
+    port: 8091
+    delay: 10
+    timeout: 120
+
+- name: Create Couchbase data directory
+  file:
+    path: "{{ couchbase_data_dir }}"
+    state: directory
+    owner: couchbase
+    group: couchbase
+    mode: "0755"
+
+- name: Create Couchbase index directory
+  file:
+    path: "{{ couchbase_index_dir }}"
+    state: directory
+    owner: couchbase
+    group: couchbase
+    mode: "0755"
+
+- name: Disable THP (Transparent Huge Pages)
+  shell: |
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+  changed_when: false
+
+- name: Set swappiness to 0
+  sysctl:
+    name: vm.swappiness
+    value: "0"
+    state: present
+
+# Single-node: Initialize standalone cluster
+- name: Initialize standalone Couchbase (single-node)
+  shell: >
+    /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1
+    --cluster-username {{ couchbase_admin_user }}
+    --cluster-password {{ couchbase_admin_password }}
+    --services {{ couchbase_services }}
+    --cluster-ramsize {{ couchbase_cluster_ram_size }}
+    --cluster-index-ramsize 512
+    --cluster-fts-ramsize 512
+    --cluster-name {{ couchbase_cluster_name }}
+    --node-init-data-path {{ couchbase_data_dir }}
+    --node-init-index-path {{ couchbase_index_dir }}
+  register: init_result
+  failed_when: init_result.rc != 0 and "Cluster is already initialized" not in init_result.stdout
+  when: not couchbase_is_ha | bool
+
+# HA mode: Initialize cluster on master node
+- name: Initialize Couchbase cluster (HA mode, master node)
+  shell: >
+    /opt/couchbase/bin/couchbase-cli cluster-init -c 127.0.0.1
+    --cluster-username {{ couchbase_admin_user }}
+    --cluster-password {{ couchbase_admin_password }}
+    --services {{ couchbase_services }}
+    --cluster-ramsize {{ couchbase_cluster_ram_size }}
+    --cluster-index-ramsize 512
+    --cluster-fts-ramsize 512
+    --cluster-name {{ couchbase_cluster_name }}
+  register: init_result_ha
+  failed_when: init_result_ha.rc != 0 and "Cluster is already initialized" not in init_result_ha.stdout
+  when:
+    - couchbase_is_ha | bool
+    - couchbase_is_master | bool
+
+# HA mode: Join cluster on non-master nodes
+- name: Join Couchbase cluster (HA mode, non-master nodes)
+  shell: >
+    /opt/couchbase/bin/couchbase-cli server-add -c {{ hostvars[couchbase_cluster_master]['ansible_host'] }}
+    --username {{ couchbase_admin_user }}
+    --password {{ couchbase_admin_password }}
+    --server-add {{ ansible_host }}
+    --server-add-username {{ couchbase_admin_user }}
+    --server-add-password {{ couchbase_admin_password }}
+    --services {{ couchbase_services }}
+  register: join_result
+  failed_when: join_result.rc != 0 and "Node is already part of cluster" not in join_result.stdout
+  when:
+    - couchbase_is_ha | bool
+    - not couchbase_is_master | bool
+
+# HA mode: Rebalance cluster (master node only)
+- name: Rebalance Couchbase cluster (HA mode, master node)
+  shell: >
+    /opt/couchbase/bin/couchbase-cli rebalance -c 127.0.0.1
+    --username {{ couchbase_admin_user }}
+    --password {{ couchbase_admin_password }}
+  when:
+    - couchbase_is_ha | bool
+    - couchbase_is_master | bool
+  ignore_errors: true

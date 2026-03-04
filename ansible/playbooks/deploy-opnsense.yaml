@@ -1,0 +1,14 @@
+---
+# Deploy OPNsense Firewall Configuration
+# Usage: ansible-playbook playbooks/deploy-opnsense.yaml -e opnsense_host=10.0.X.X
+
+- name: Configure OPNsense Firewall
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    opnsense_host: "{{ opnsense_host | default('10.0.X.X') }}"
+
+  roles:
+    - opnsense

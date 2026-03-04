@@ -1,0 +1,51 @@
+# 4. SSH CONFIGURATION
+echo "--- 4. SSH CONFIGURATION ---"
+add_ssh_key() {
+    local user=$1
+    local key=$2
+    local home_dir
+    
+    if [ "$user" = "root" ]; then
+        home_dir="/root"
+    else
+        home_dir="/home/$user"
+    fi
+
+    if [ -n "$key" ]; then
+        mkdir -p "$home_dir/.ssh"
+        echo "$key" >> "$home_dir/.ssh/authorized_keys"
+        chown -R "$user:$user" "$home_dir/.ssh"
+        chmod 700 "$home_dir/.ssh"
+        chmod 600 "$home_dir/.ssh/authorized_keys"
+    fi
+}
+
+# Add SSH keys for root (if provided in variables, though usually handled via users)
+# Keeping existing root key logic if needed, or we can rely on the users list if root is included there.
+# For now, let's iterate over users to add their keys.
+
+%{ for user in users ~}
+add_ssh_key "${user.username}" "${user.ssh_key}"
+%{ endfor ~}
+
+# default user: NO SSH keys - password authentication only
+
+# Enable Root Login (if requested)
+if [ "${allow_root_ssh}" = "true" ]; then
+    sed -i 's/^#\?\s*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+else
+    sed -i 's/^#\?\s*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+fi
+
+# Enable both Password and Pubkey Authentication
+sed -i 's/^#\?\s*PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#\?\s*PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#\?\s*KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
+
+# Ensure PAM is enabled for password authentication
+sed -i 's/^#\?\s*UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
+
+# Restart SSH with multiple fallback methods
+echo "Restarting SSH service..."
+run_systemctl restart ssh || run_systemctl restart sshd || /etc/init.d/ssh restart || service ssh restart
+sleep 2

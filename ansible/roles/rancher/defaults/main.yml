@@ -1,0 +1,53 @@
+# docker_data_root: /mnt/data01/docker
+# rancher_data_dir: /mnt/data01/rancher
+
+# rancher_hostname: rancher.local
+# rancher_container_name: rancher
+# rancher_image: rancher/rancher:v2.9.2
+
+# rancher_http_port: 80
+# rancher_https_port: 443
+
+# rancher_audit_dir: /mnt/data01/rancher/audit
+
+# rancher_audit_level: 1
+# rancher_audit_log_maxage: 30
+# rancher_audit_log_maxsize: 40
+# rancher_audit_log_maxbackup: 40
+
+# rancher_user: example_user
+# rancher_group: example_user
+
+# rancher_base_dir: /mnt/data01/rancher
+# rancher_cert_dir: /mnt/data01/rancher/certs
+# rancher_audit_dir: /mnt/data01/rancher/audit
+
+# Disk / Path
+docker_data_root: /mnt/data01/docker
+rancher_data_dir: /mnt/data01/rancher
+rancher_certs_dir: "{{ rancher_data_dir }}/certs"
+rancher_audit_dir: "{{ rancher_data_dir }}/audit"
+
+# Rancher
+rancher_container_name: rancher
+rancher_image: rancher/rancher:v2.9.2
+rancher_hostname: rancher-ui.example.com
+rancher_bootstrap_password: "" # SET IN INVENTORY
+
+# Ports
+rancher_http_port: 80
+rancher_https_port: 443
+
+# Audit
+rancher_audit_level: 1
+rancher_audit_log_maxage: 10
+rancher_audit_log_maxsize: 100
+rancher_audit_log_maxbackup: 10
+
+# TLS (PUBLIC CERT)
+rancher_tls_source: secret # mounted cert
+rancher_no_cacerts: true # PUBLIC CA olduğu için TRUE
+
+# Docker users
+# PROD için BOŞ bırakılmalı
+rancher_docker_users: []

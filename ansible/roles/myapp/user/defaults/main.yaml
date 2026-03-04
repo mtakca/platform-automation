@@ -1,0 +1,13 @@
+---
+# User configuration
+swarm_user_name: "myapp"
+swarm_user_password: "" # Should be set via vars or vault
+swarm_user_groups:
+  - docker
+  - sudo
+
+# Home directory
+swarm_user_home: "/home/{{ swarm_user_name }}"
+
+# Data directory (NFS mount point or local)
+swarm_data_dir: "{{ swarm_user_home }}/data"

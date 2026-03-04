@@ -1,0 +1,7 @@
+---
+# FreeIPA Role
+# Installs and configures FreeIPA Server for centralized identity management
+# Uses /mnt/data01 for IPA data if available
+
+dependencies:
+  - common

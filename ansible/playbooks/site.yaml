@@ -1,0 +1,5 @@
+---
+# Master Playbook
+- import_playbook: setup_common.yaml
+- import_playbook: setup_ha_services.yaml
+- import_playbook: setup_management.yaml

@@ -1,0 +1,27 @@
+---
+# UAT Environment Variables
+# Inherits from group_vars/all/environment.yml and overrides
+# NOTE: Hardcoded IPs removed - all values should come from inventories
+
+# Network - inherited from inventories/uat/group_vars/all/environment.yml
+# These are legacy vars for backward compatibility
+# Real network config is in inventories/uat/group_vars/all/environment.yml
+
+# DNS forwarders - external DNS servers
+dns_forwarders:
+  - "8.8.8.8"
+  - "8.8.4.4"
+
+# Domain
+base_domain: "example.com"
+environment_prefix: "myapp-uat"
+cluster_name: "uat-myapp-cluster"
+
+# Trusted networks - reference from inventories/uat/group_vars/all/environment.yml
+# These will be populated dynamically when networks variable is defined
+trusted_networks:
+  - "{{ networks.myapp.cidr | default('') }}"
+  - "{{ networks.myapp.cidr | default('') }}"
+  - "{{ networks.myapp.cidr | default('') }}"
+  - "localhost"
+  - "localnets"

@@ -1,0 +1,4 @@
+# 3. Network Configuration (Basic DNS)
+$DnsServers = "${dns_servers}" -split ","
+$Interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+Set-DnsClientServerAddress -InterfaceIndex $Interface.ifIndex -ServerAddresses $DnsServers

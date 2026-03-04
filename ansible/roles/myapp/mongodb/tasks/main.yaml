@@ -1,0 +1,86 @@
+---
+# MongoDB needs Docker installed first (standalone node, not part of swarm)
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Add Docker GPG key
+  ansible.builtin.shell: |
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+  args:
+    creates: /etc/apt/keyrings/docker.asc
+
+- name: Add Docker repository
+  ansible.builtin.shell: |
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list
+  args:
+    creates: /etc/apt/sources.list.d/docker.list
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Ensure Docker is running
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add myapp user to docker group
+  ansible.builtin.user:
+    name: myapp
+    groups: docker
+    append: true
+
+- name: Create MongoDB directory
+  ansible.builtin.file:
+    path: "{{ mongodb_data_dir }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+- name: Deploy MongoDB env file
+  ansible.builtin.template:
+    src: mongodb.env.j2
+    dest: "{{ mongodb_data_dir }}/.env"
+    owner: myapp
+    group: myapp
+    mode: "0600"
+
+- name: Deploy MongoDB docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ mongodb_data_dir }}/docker-compose.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Deploy MongoDB container
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ mongodb_data_dir }}"
+  register: mongodb_deploy
+  changed_when: "'Started' in mongodb_deploy.stdout or 'Created' in mongodb_deploy.stdout"
+
+- name: Wait for MongoDB to be ready
+  ansible.builtin.command: docker exec mongodb mongosh --eval "db.adminCommand('ping')"
+  register: mongo_ping
+  until: mongo_ping.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+  ignore_errors: true

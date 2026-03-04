@@ -1,0 +1,19 @@
+# 3. HOSTNAME CONFIGURATION
+echo "--- 3. HOSTNAME CONFIGURATION ---"
+NEW_HOSTNAME="${dc_prefix}-${environment_name}-${app_prefix}-${vm_role}-${name_suffix}"
+
+echo "Setting hostname to $NEW_HOSTNAME..."
+# Always write to /etc/hostname for persistence
+echo "$NEW_HOSTNAME" > /etc/hostname
+hostname "$NEW_HOSTNAME" || true
+
+if command -v hostnamectl >/dev/null; then
+    hostnamectl set-hostname "$NEW_HOSTNAME" || echo "hostnamectl failed, ignoring..."
+fi
+
+# Update /etc/hosts
+cat > /etc/hosts <<EOF
+127.0.0.1   localhost
+127.0.1.1   $NEW_HOSTNAME
+::1         ip6-localhost ip6-loopback
+EOF

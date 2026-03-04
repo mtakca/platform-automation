@@ -1,0 +1,27 @@
+# 1. USER CONFIGURATION
+echo "--- 1. USER CONFIGURATION ---"
+
+# Create default user (password authentication only)
+if ! id -u "${default_user}" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo "${default_user}"
+    echo "User ${default_user} created."
+fi
+echo "${default_user}:${default_password}" | chpasswd
+echo "${default_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/example
+chmod 0440 /etc/sudoers.d/example
+
+%{ for user in users ~}
+# Create user ${user.username} (SSH key only, sudo enabled)
+if ! id -u "${user.username}" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash -G sudo "${user.username}"
+    echo "User ${user.username} created."
+fi
+
+# No password set for SSH-only users
+# Enable passwordless sudo
+echo "${user.username} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${user.username}
+chmod 0440 /etc/sudoers.d/${user.username}
+%{ endfor ~}
+
+# Set root password
+echo "root:${root_password}" | chpasswd

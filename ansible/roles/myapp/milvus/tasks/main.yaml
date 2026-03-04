@@ -1,0 +1,49 @@
+---
+# Install Docker first (standalone node)
+- name: Install Docker on standalone node
+  ansible.builtin.include_tasks: ../../common/tasks/install-docker.yaml
+
+- name: Create Milvus directory
+  ansible.builtin.file:
+    path: "{{ milvus_data_dir }}"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+- name: Create Milvus data directory
+  ansible.builtin.file:
+    path: "{{ milvus_data_dir }}/data"
+    state: directory
+    owner: myapp
+    group: myapp
+    mode: "0755"
+
+- name: Download default Milvus config
+  ansible.builtin.get_url:
+    url: "https://raw.githubusercontent.com/milvus-io/milvus/v2.5.14/configs/milvus.yaml"
+    dest: "{{ milvus_data_dir }}/data/milvus.yaml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Adjust Milvus logging level (line 38)
+  ansible.builtin.lineinfile:
+    path: "{{ milvus_data_dir }}/data/milvus.yaml"
+    regexp: '^(\s*)level:\s*info'
+    line: '\1level: warn'
+    backrefs: true
+
+- name: Deploy docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yaml.j2
+    dest: "{{ milvus_data_dir }}/docker-compose.yml"
+    owner: myapp
+    group: myapp
+    mode: "0644"
+
+- name: Start Milvus with docker compose
+  ansible.builtin.command: docker compose up -d
+  args:
+    chdir: "{{ milvus_data_dir }}"
+  changed_when: true

@@ -1,0 +1,9 @@
+---
+bastion_ssh_port: 22
+bastion_allowed_users: [] # List of users allowed to SSH
+bastion_idle_timeout: 300 # Seconds
+bastion_max_auth_tries: 3
+bastion_fail2ban_bantime: 3600
+bastion_fail2ban_findtime: 600
+bastion_fail2ban_maxretry: 3
+bastion_banner_text: "WARNING: Authorized Access Only. All activity is monitored."

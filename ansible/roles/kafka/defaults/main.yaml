@@ -1,0 +1,33 @@
+---
+# Kafka Role Defaults (Generic)
+# Environment-specific values should be defined in inventory
+
+# Detect single node vs HA mode
+kafka_is_ha: "{{ groups['kafka'] | default([]) | length > 1 }}"
+kafka_broker_id: "{{ groups['kafka'].index(inventory_hostname) if groups['kafka'] | default([]) | length > 0 else 0 }}"
+
+# Node ID for KRaft - use inventory value or calculate
+kafka_node_id: "{{ groups['kafka'].index(inventory_hostname) + 1 if groups['kafka'] | default([]) | length > 0 else 1 }}"
+
+# Data directories
+kafka_data_dir: "/mnt/data01/kafka"
+kafka_log_dir: "{% if ansible_mounts | selectattr('mount', 'equalto', '/mnt/data02') | list | length > 0 %}/mnt/data02/kafka-logs{% else %}/mnt/data01/kafka-logs{% endif %}"
+
+# KRaft Controller Quorum Voters
+kafka_controller_quorum_voters: >-
+  {% if kafka_is_ha %}
+  {% for host in groups['kafka'] %}{{ loop.index }}@{{ hostvars[host]['ansible_host'] }}:9093{% if not loop.last %},{% endif %}{% endfor %}
+  {% else %}
+  1@localhost:9093
+  {% endif %}
+
+# Cluster ID - Unique per cluster (generate with: kafka-storage.sh random-uuid)
+kafka_cluster_id: "WaLLeTKaFKaC1usterID001"
+
+# JMX Exporter
+kafka_jmx_enabled: true
+kafka_jmx_port: 7071
+kafka_jmx_version: "1.0.1"
+kafka_jmx_jar_url: "https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/{{ kafka_jmx_version }}/jmx_prometheus_javaagent-{{ kafka_jmx_version }}.jar"
+kafka_jmx_config_file: "/opt/kafka/config/jmx_exporter_config.yaml"
+kafka_heap_size: "1G" # Default heap size

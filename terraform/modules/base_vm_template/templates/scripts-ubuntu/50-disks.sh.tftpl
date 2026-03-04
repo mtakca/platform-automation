@@ -1,0 +1,243 @@
+#!/bin/bash
+# Don't use set -e - cloud-init must not fail due to disk setup issues
+
+LOG_TAG="[50-disks]"
+
+log() {
+    echo "$LOG_TAG $(date '+%Y-%m-%d %H:%M:%S') $1"
+    logger -t "cloud-init-disks" "$1" 2>/dev/null || true
+}
+
+log "=== START: Data Disk Setup ==="
+
+# Check if auto_mount_disks is enabled
+AUTO_MOUNT_ENABLED="${auto_mount_disks}"
+log "auto_mount_disks: $AUTO_MOUNT_ENABLED"
+
+if [ "$AUTO_MOUNT_ENABLED" != "true" ]; then
+    log "Disk auto-mount is DISABLED. Skipping disk setup."
+    log "=== END: Data Disk Setup (disabled) ==="
+    exit 0
+fi
+
+log "Disk auto-mount is ENABLED. Proceeding with setup..."
+
+# Create disk mount configuration from Terraform
+log "Creating disk mount configuration..."
+cat > /etc/disk-mount-config.json <<'DISKCONFIG'
+${jsonencode([for name, disk in data_disks : {
+  name        = name
+  bus_number  = disk.bus_number
+  unit_number = disk.unit_number
+  mount_path  = disk.mount_path
+}])}
+DISKCONFIG
+log "Disk configuration written to /etc/disk-mount-config.json"
+
+# Create the mounting script (only mounts explicitly configured disks)
+log "Creating mount script at /usr/local/bin/mount-data-disks.sh"
+cat > /usr/local/bin/mount-data-disks.sh <<'EOF'
+#!/bin/bash
+# Mount only explicitly configured disks - NO auto-mount of extra drives
+
+LOGFILE="/var/log/mount-data-disks.log"
+LOG_TAG="[mount-data-disks]"
+CONFIG_FILE="/etc/disk-mount-config.json"
+
+log() {
+    local msg="$LOG_TAG $(date '+%Y-%m-%d %H:%M:%S') $1"
+    echo "$msg" | tee -a "$LOGFILE"
+    logger -t "mount-data-disks" "$1" 2>/dev/null || true
+}
+
+log "=== START: Mount Data Disks Service ==="
+
+# Wait for devices to settle
+log "Waiting 5 seconds for devices to settle..."
+sleep 5
+
+# Check for config file
+if [ ! -f "$CONFIG_FILE" ]; then
+    log "No disk configuration file found. Nothing to mount."
+    log "=== END: Mount Data Disks Service ==="
+    exit 0
+fi
+
+if ! command -v python3 &>/dev/null; then
+    log "ERROR: python3 not available"
+    exit 0
+fi
+
+# Function to get SCSI address (target:lun) for a disk
+get_scsi_address() {
+    local disk=$1
+    local scsi_path=$(readlink -f /sys/block/$disk/device 2>/dev/null)
+    if [ -n "$scsi_path" ]; then
+        local scsi_id=$(basename $(dirname $(dirname $scsi_path)) 2>/dev/null)
+        if [[ "$scsi_id" =~ ^[0-9]+:[0-9]+:[0-9]+:[0-9]+$ ]]; then
+            local target=$(echo $scsi_id | cut -d: -f3)
+            local lun=$(echo $scsi_id | cut -d: -f4)
+            echo "$target:$lun"
+            return
+        fi
+    fi
+    echo ""
+}
+
+# Build map of SCSI address -> mount path from config
+log "Loading disk mount configuration..."
+declare -A MOUNT_BY_SCSI
+while IFS= read -r line; do
+    scsi_addr=$(echo "$line" | cut -d'|' -f1)
+    mpath=$(echo "$line" | cut -d'|' -f2)
+    if [ -n "$scsi_addr" ] && [ -n "$mpath" ]; then
+        MOUNT_BY_SCSI[$scsi_addr]="$mpath"
+        log "Config: SCSI $scsi_addr -> $mpath"
+    fi
+done < <(python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        disks = json.load(f)
+    for disk in disks:
+        mount_path = disk.get('mount_path') or ''
+        if mount_path:
+            # VMware unit_number maps to Linux SCSI target, lun is typically 0
+            unit = disk.get('unit_number', 0)
+            print(str(unit) + ':0|' + mount_path)
+except:
+    pass
+" 2>/dev/null)
+
+CONFIGURED_COUNT=$${#MOUNT_BY_SCSI[@]}
+log "Loaded $CONFIGURED_COUNT mount path configuration(s)"
+
+if [ "$CONFIGURED_COUNT" -eq 0 ]; then
+    log "No mount paths configured. Nothing to mount."
+    log "=== END: Mount Data Disks Service ==="
+    exit 0
+fi
+
+# Get root disk to exclude
+ROOT_DEVICE=$(findmnt -n -o SOURCE /)
+ROOT_DISK=$(lsblk -no PKNAME "$ROOT_DEVICE" 2>/dev/null)
+log "Root disk: $ROOT_DISK"
+
+# Scan for disks and mount ONLY those with explicit configuration
+log "Scanning for configured disks..."
+ALL_DISKS=$(lsblk -dn -o NAME,TYPE | awk '$2=="disk"{print $1}')
+
+MOUNTED_COUNT=0
+SKIPPED_COUNT=0
+
+for DISK in $ALL_DISKS; do
+    # Skip root disk, floppy, and CD-ROM
+    [[ "$DISK" == "$ROOT_DISK" ]] && continue
+    [[ "$DISK" == "fd0" ]] && continue
+    [[ "$DISK" == sr* ]] && continue
+
+    DEVICE="/dev/$DISK"
+    SCSI_ADDR=$(get_scsi_address $DISK)
+
+    log "Checking $DISK (SCSI: $SCSI_ADDR)"
+
+    # ONLY process disks that have explicit mount configuration
+    if [ -z "$SCSI_ADDR" ] || [ -z "$${MOUNT_BY_SCSI[$SCSI_ADDR]:-}" ]; then
+        log "SKIP: $DISK - no mount_path configured"
+        SKIPPED_COUNT=$((SKIPPED_COUNT+1))
+        continue
+    fi
+
+    MNT="$${MOUNT_BY_SCSI[$SCSI_ADDR]}"
+    log "--- Mounting $DISK (SCSI $SCSI_ADDR) -> $MNT ---"
+
+    # Check if device exists
+    if [ ! -b "$DEVICE" ]; then
+        log "ERROR: $DEVICE does not exist"
+        continue
+    fi
+
+    DISK_SIZE=$(lsblk -dn -o SIZE "$DEVICE" 2>/dev/null || echo "unknown")
+    log "Disk size: $DISK_SIZE"
+
+    # Skip if already mounted
+    if grep -qs "$MNT" /proc/mounts; then
+        log "Already mounted on $MNT"
+        MOUNTED_COUNT=$((MOUNTED_COUNT+1))
+        continue
+    fi
+
+    EXISTING_MOUNT=$(findmnt -n -o TARGET "$DEVICE" 2>/dev/null || true)
+    if [ -n "$EXISTING_MOUNT" ]; then
+        log "Already mounted at $EXISTING_MOUNT"
+        continue
+    fi
+
+    mkdir -p "$MNT"
+
+    # Format if no filesystem
+    EXISTING_FS=$(blkid -s TYPE -o value "$DEVICE" 2>/dev/null || true)
+    if [ -z "$EXISTING_FS" ]; then
+        log "Formatting with ext4..."
+        if ! mkfs.ext4 -F "$DEVICE"; then
+            log "ERROR: Failed to format"
+            continue
+        fi
+    else
+        log "Existing filesystem: $EXISTING_FS"
+    fi
+
+    # Mount
+    if mount "$DEVICE" "$MNT"; then
+        log "Mounted $DEVICE on $MNT"
+        MOUNTED_COUNT=$((MOUNTED_COUNT+1))
+
+        # Add to fstab
+        UUID=$(blkid -s UUID -o value "$DEVICE")
+        if [ -n "$UUID" ] && ! grep -q "$UUID" /etc/fstab; then
+            echo "UUID=$UUID $MNT ext4 defaults,nofail,x-systemd.device-timeout=45 0 0" >> /etc/fstab
+            log "Added to fstab"
+        fi
+    else
+        log "ERROR: Failed to mount"
+    fi
+done
+
+log "=== SUMMARY ==="
+log "Configured: $CONFIGURED_COUNT, Mounted: $MOUNTED_COUNT, Skipped: $SKIPPED_COUNT"
+log "=== END: Mount Data Disks Service ==="
+exit 0
+EOF
+chmod +x /usr/local/bin/mount-data-disks.sh
+log "Mount script created"
+
+# Create Systemd Service
+cat > /etc/systemd/system/mount-data-disks.service <<'EOF'
+[Unit]
+Description=Mount Configured Data Disks
+After=local-fs.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mount-data-disks.sh
+RemainAfterExit=yes
+TimeoutStartSec=60
+SuccessExitStatus=0 1 2 3 4 5
+
+[Install]
+WantedBy=basic.target
+EOF
+
+systemctl daemon-reload || true
+systemctl enable mount-data-disks.service || true
+log "Service enabled"
+
+# Udev rule for hot-plug (only triggers service, script decides what to mount)
+cat > /etc/udev/rules.d/99-hotplug-disk.rules <<'EOF'
+ACTION=="add", SUBSYSTEM=="block", KERNEL=="sd[b-z]", RUN+="/bin/systemctl start mount-data-disks.service"
+EOF
+udevadm control --reload-rules || true
+
+log "=== END: Data Disk Setup Complete ==="
+exit 0

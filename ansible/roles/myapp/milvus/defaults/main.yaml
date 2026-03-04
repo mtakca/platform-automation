@@ -1,0 +1,17 @@
+---
+# Milvus settings (Myapp Production)
+milvus_image: "milvusdb/milvus:v2.5.14"
+milvus_etcd_image: "quay.io/coreos/etcd:v3.5.18"
+milvus_attu_image: "zilliz/attu:v2.6"
+milvus_data_dir: "/home/myapp/milvus"
+
+# MinIO S3 storage (dynamic from inventory)
+milvus_s3_endpoint: "{{ hostvars[groups['minio'][0]]['ansible_host'] }}:9000"
+milvus_s3_access_key: "minioadmin"
+milvus_s3_secret_key: "{{ vault_milvus_s3_secret | default('DefaultPassword123!') }}"
+milvus_s3_bucket_name: "myapp-milvus"
+milvus_s3_use_ssl: false
+
+# Ports
+milvus_port: 19530
+milvus_attu_port: 8080

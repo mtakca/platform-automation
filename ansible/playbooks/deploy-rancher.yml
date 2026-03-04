@@ -1,0 +1,5 @@
+- name: Deploy Rancher on Docker
+  hosts: "{{ rancher_hosts | default('rke_ui') }}"
+  become: true
+  roles:
+    - rancher

@@ -1,0 +1,28 @@
+# Vault Configuration - Raft HA Mode
+
+ui = {{ vault_ui_enabled | lower }}
+log_level = "{{ vault_log_level }}"
+
+storage "raft" {
+  path    = "{{ vault_data_dir }}/raft"
+  node_id = "{{ vault_raft_node_id }}"
+
+{% for host in groups['vault'] %}
+{% if host != inventory_hostname %}
+  retry_join {
+    leader_api_addr = "http://{{ hostvars[host]['ansible_host'] }}:{{ vault_api_port }}"
+  }
+{% endif %}
+{% endfor %}
+}
+
+listener "tcp" {
+  address       = "0.0.0.0:{{ vault_api_port }}"
+  tls_disable   = {{ vault_tls_disable | lower }}
+  cluster_address = "0.0.0.0:{{ vault_cluster_port }}"
+}
+
+api_addr     = "{{ vault_api_addr }}"
+cluster_addr = "{{ vault_cluster_addr }}"
+
+disable_mlock = true

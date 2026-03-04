@@ -1,0 +1,30 @@
+---
+# Auto-generated Ansible inventory for: {{ service_name }}
+all:
+  vars:
+    ansible_user: {{ ansible_user }}
+    ansible_password: {{ ansible_password }}
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  hosts:
+%{ for vm_name, vm in vms ~}
+    ${vm_name}:
+      ansible_host: ${vm.ip_address}
+%{ if keepalived_vip != "" ~}
+      keepalived_vip: ${keepalived_vip}
+      keepalived_vrid: ${keepalived_vrid}
+      keepalived_check_script: "${keepalived_check_script}"
+%{ endif ~}
+%{ for key, val in try(host_vars[vm_name], {}) ~}
+      ${key}: "${val}"
+%{ endfor ~}
+%{ endfor ~}
+  children:
+    ${service_name}:
+      hosts:
+%{ for vm_name, vm in vms ~}
+        ${vm_name}: {}
+%{ endfor ~}
+%{ for key, val in extra_vars ~}
+  vars:
+    ${key}: "${val}"
+%{ endfor ~}

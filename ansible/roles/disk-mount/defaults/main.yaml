@@ -1,0 +1,17 @@
+---
+# Disk Mount Role - Mounts external disks to /mnt/data01
+# Works with disks attached via Terraform data_disks
+
+# Mount point path
+disk_mount_path: "/mnt/data01"
+
+# Filesystem type
+disk_fs_type: "ext4"
+
+# Device to mount (usually /dev/sdb for first data disk)
+disk_device: "/dev/sdb"
+
+# Owner settings
+disk_owner: "root"
+disk_group: "root"
+disk_mode: "0755"

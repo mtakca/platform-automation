@@ -1,0 +1,6 @@
+---
+- name: Deploy WSUS Server
+  hosts: wsus
+  gather_facts: no
+  roles:
+    - wsus

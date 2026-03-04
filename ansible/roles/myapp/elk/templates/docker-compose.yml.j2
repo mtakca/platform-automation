@@ -1,0 +1,50 @@
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:{{ elasticsearch_version }}
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms{{ elasticsearch_heap_size }} -Xmx{{ elasticsearch_heap_size }}"
+    volumes:
+      - {{ elasticsearch_data_dir }}:/usr/share/elasticsearch/data
+    ports:
+      - "{{ elasticsearch_http_port }}:9200"
+      - "{{ elasticsearch_transport_port }}:9300"
+    restart: unless-stopped
+    networks:
+      - elk
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:{{ logstash_version }}
+    container_name: logstash
+    volumes:
+      - {{ logstash_data_dir }}:/usr/share/logstash/data
+    ports:
+      - "5044:5044"
+      - "9600:9600"
+    environment:
+      - "LS_JAVA_OPTS=-Xms256m -Xmx256m"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - elk
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:{{ kibana_version }}
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME={{ kibana_server_name }}
+    ports:
+      - "{{ kibana_port }}:5601"
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    networks:
+      - elk
+
+networks:
+  elk:
+    driver: bridge

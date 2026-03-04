@@ -1,0 +1,4 @@
+# 1. Hostname Configuration
+$NewHostname = "${NEW_HOSTNAME}"
+Write-Output "Setting hostname to $NewHostname..."
+Rename-Computer -NewName $NewHostname -Force

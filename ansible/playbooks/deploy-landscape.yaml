@@ -1,0 +1,8 @@
+- name: Deploy Landscape Server
+  hosts: landscape
+  become: yes
+  gather_facts: yes
+  vars_files:
+    - "../../inventories/preprod/group_vars/all/vault.yml"
+  roles:
+    - landscape

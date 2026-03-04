@@ -1,0 +1,111 @@
+---
+- include_tasks: disk_setup.yml
+
+- name: Install Java
+  apt:
+    name: default-jre
+    state: present
+    update_cache: yes
+    lock_timeout: 600
+
+- name: Create Kafka user
+  user:
+    name: kafka
+    system: yes
+
+- name: Download Kafka
+  get_url:
+    url: https://downloads.apache.org/kafka/4.1.1/kafka_2.13-4.1.1.tgz
+    dest: /tmp/kafka.tgz
+
+- name: Extract Kafka
+  unarchive:
+    src: /tmp/kafka.tgz
+    dest: /opt
+    remote_src: yes
+    owner: kafka
+    group: kafka
+    extra_opts: [--no-same-owner]
+  become: true
+  args:
+    creates: /opt/kafka_2.13-4.1.1
+
+- name: Ensure Kafka config directory exists
+  file:
+    path: /opt/kafka_2.13-4.1.1/config
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0755"
+
+- name: Link Kafka directory
+  file:
+    src: /opt/kafka_2.13-4.1.1
+    dest: /opt/kafka
+    force: yes
+    state: link
+    owner: kafka
+    group: kafka
+
+- name: Create Kafka data directory
+  file:
+    path: "{{ kafka_data_dir }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0755"
+
+- name: Create Kafka log directory
+  file:
+    path: "{{ kafka_log_dir }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0755"
+
+- name: Configure Kafka
+  template:
+    src: server.properties.j2
+    dest: /opt/kafka/config/server.properties
+    owner: kafka
+    group: kafka
+    mode: "0644"
+  notify: restart kafka
+
+- include_tasks: sasl.yml
+  when: kafka_sasl_enabled | default(false)
+
+- include_tasks: jmx_exporter.yml
+  when: kafka_jmx_enabled | default(false)
+
+- name: Check if Kafka is formatted
+  stat:
+    path: "{{ kafka_log_dir }}/meta.properties"
+  register: kafka_meta
+
+- name: Format Kafka Storage (KRaft)
+  command: "/opt/kafka/bin/kafka-storage.sh format -t {{ kafka_cluster_id }} -c /opt/kafka/config/server.properties"
+  when: not kafka_meta.stat.exists
+  become: true
+  become_user: kafka
+
+- name: Create Kafka systemd service
+  template:
+    src: kafka.service.j2
+    dest: /etc/systemd/system/kafka.service
+  notify:
+    - reload systemd
+    - restart kafka
+
+- name: Start Kafka service
+  service:
+    name: kafka
+    state: started
+    enabled: yes
+
+- name: Wait for Kafka to be ready
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: 9092
+    delay: 10
+    timeout: 300

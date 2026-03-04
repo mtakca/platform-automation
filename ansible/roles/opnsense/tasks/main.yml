@@ -1,0 +1,62 @@
+---
+# OPNsense Firewall Configuration Tasks
+# Uses puzzle.opnsense collection for API-based configuration
+
+- name: Verify OPNsense API connectivity
+  uri:
+    url: "{{ opnsense_api_url }}/core/firmware/status"
+    method: GET
+    user: "{{ opnsense_api_key }}"
+    password: "{{ opnsense_api_secret }}"
+    validate_certs: "{{ opnsense_verify_ssl }}"
+    force_basic_auth: yes
+  register: opnsense_status
+  failed_when: opnsense_status.status != 200
+
+- name: Display OPNsense version
+  debug:
+    msg: "OPNsense Version: {{ opnsense_status.json.product.product_version | default('unknown') }}"
+
+# Configure Firewall Rules
+- name: Configure firewall rules
+  puzzle.opnsense.firewall_rule:
+    api_url: "{{ opnsense_api_url }}"
+    api_key: "{{ opnsense_api_key }}"
+    api_secret: "{{ opnsense_api_secret }}"
+    validate_certs: "{{ opnsense_verify_ssl }}"
+    interface: "{{ item.interface }}"
+    action: "{{ item.action }}"
+    protocol: "{{ item.protocol | default('any') }}"
+    source_net: "{{ item.source }}"
+    destination_net: "{{ item.destination }}"
+    description: "{{ item.name | default(item.description) }}"
+    state: present
+  loop: "{{ opnsense_default_rules }}"
+  when: opnsense_default_rules is defined
+
+# Configure Outbound NAT
+- name: Configure outbound NAT
+  puzzle.opnsense.firewall_nat_outbound:
+    api_url: "{{ opnsense_api_url }}"
+    api_key: "{{ opnsense_api_key }}"
+    api_secret: "{{ opnsense_api_secret }}"
+    validate_certs: "{{ opnsense_verify_ssl }}"
+    interface: "{{ item.interface }}"
+    source_net: "{{ item.source }}"
+    destination_net: "{{ item.destination }}"
+    target: "{{ item.target }}"
+    description: "{{ item.name }}"
+    state: present
+  loop: "{{ opnsense_nat_rules }}"
+  when: opnsense_nat_rules is defined
+
+# Apply changes
+- name: Apply firewall changes
+  uri:
+    url: "{{ opnsense_api_url }}/firewall/filter/apply"
+    method: POST
+    user: "{{ opnsense_api_key }}"
+    password: "{{ opnsense_api_secret }}"
+    validate_certs: "{{ opnsense_verify_ssl }}"
+    force_basic_auth: yes
+  when: opnsense_default_rules is defined or opnsense_nat_rules is defined
