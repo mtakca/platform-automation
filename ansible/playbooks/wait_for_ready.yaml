@@ -1,0 +1,70 @@
+---
+# Wait for Cloud-Init Completion
+# Replaces unreliable `sleep 30` with actual readiness verification.
+# Checks: SSH connectivity → cloud-init status → disk mounts → hostname applied.
+- name: Wait for VM Readiness (Post-Terraform)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for SSH to become available
+      ansible.builtin.wait_for_connection:
+        delay: 5
+        timeout: 300
+        sleep: 5
+
+    - name: Gather minimal facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "!all"
+          - min
+
+    - name: Wait for cloud-init to complete
+      ansible.builtin.command: cloud-init status --wait
+      register: cloud_init_result
+      changed_when: false
+      failed_when: cloud_init_result.rc != 0
+      retries: 30
+      delay: 10
+      until: cloud_init_result.rc == 0
+      ignore_errors: true
+
+    - name: Verify cloud-init finished successfully
+      ansible.builtin.command: cloud-init status
+      register: ci_status
+      changed_when: false
+      failed_when: >
+        'error' in ci_status.stdout | lower and
+        'recoverable' not in ci_status.stdout | lower
+
+    - name: Verify init script ran (hostname check)
+      ansible.builtin.command: hostname
+      register: hostname_result
+      changed_when: false
+
+    - name: Show VM readiness status
+      ansible.builtin.debug:
+        msg: |
+          ✅ VM Ready: {{ inventory_hostname }}
+             Hostname: {{ hostname_result.stdout }}
+             Cloud-Init: {{ ci_status.stdout | trim }}
+
+    - name: Verify data disks are mounted (if expected)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if lsblk | grep -q 'sdb'; then
+          mountpoint -q /mnt/data01 2>/dev/null && echo "MOUNTED" || echo "NOT_MOUNTED"
+        else
+          echo "NO_DATA_DISK"
+        fi
+      args:
+        executable: /bin/bash
+      register: disk_check
+      changed_when: false
+      when: ansible_os_family | default('') != 'Windows'
+
+    - name: Warn if data disk exists but not mounted
+      ansible.builtin.debug:
+        msg: "⚠ WARNING: Data disk detected but /mnt/data01 not mounted on {{ inventory_hostname }}"
+      when:
+        - disk_check is defined
+        - disk_check.stdout | default('') == 'NOT_MOUNTED'

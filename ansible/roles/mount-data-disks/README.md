@@ -23,7 +23,7 @@ mount_path: "/data"            # Default mount path prefix
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/hosts.yaml playbooks/deploy-mount-disks.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-mount-disks.yaml
 ```
 
 ## Author

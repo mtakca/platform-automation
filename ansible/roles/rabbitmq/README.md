@@ -40,7 +40,7 @@ rabbitmq:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/rabbitmq/hosts.yaml playbooks/deploy-rabbitmq.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-rabbitmq.yaml
 ```
 
 ## HA Configuration

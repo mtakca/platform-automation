@@ -17,8 +17,8 @@ sequenceDiagram
     Make->>TF: terraform apply -var-file=...
     TF->>vCD: API Calls (Create Net, VM, FW)
     vCD-->>TF: State and IP Outputs
-    TF-->>Make: Completion Signal (+ 30 sec wait)
-    Make->>Make: Trigger Ansible (infra-ansible)
+    TF-->>Make: Completion Signal (+ VM Readiness Check)
+    Make->>Make: Trigger Ansible
 ```
 
 ## Usage

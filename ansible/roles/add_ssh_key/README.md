@@ -17,7 +17,7 @@ ssh_keys:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/hosts.yaml playbooks/add-ssh-key.yaml -e @keys.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/add-ssh-key.yaml -e @keys.yaml
 ```
 
 ## Author

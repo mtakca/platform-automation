@@ -18,6 +18,7 @@ This directory contains the playbooks used to orchestrate the infrastructure con
 | `deploy-postgresql-autobase.yaml` | Deploys PostgreSQL HA (Patroni) via Autobase. |
 | `deploy-couchbase.yaml` | Deploys Couchbase Cluster. |
 | `deploy-haproxy.yaml` | Deploys HAProxy + Keepalived. |
+| `wait_for_ready.yaml` | Waits for SSH + cloud-init + disk mounts before configuration. |
 
 ## Utility Playbooks
 
@@ -34,13 +35,13 @@ This directory contains the playbooks used to orchestrate the infrastructure con
 To run the entire infrastructure setup:
 
 ```bash
-# From infra-terraform-core root
-make ansible-apply ENV=p4
+# From the monorepo root
+make ansible-site ENV=uat APP=myapp
 ```
 
 To run a specific playbook manually:
 
 ```bash
-# From infra-ansible root
-ansible-playbook playbooks/setup_ha_services.yaml -i inventories/p4/hosts.ini
+# From the monorepo root
+ansible-playbook -i environments/uat/myapp.ini ansible/playbooks/setup_ha_services.yaml --become
 ```

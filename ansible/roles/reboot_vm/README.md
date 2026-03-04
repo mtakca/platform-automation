@@ -8,7 +8,7 @@ Safely reboots target VMs and waits for them to come back online.
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/hosts.yaml playbooks/reboot-vm.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/reboot-vm.yaml
 ```
 
 ## Author

@@ -40,7 +40,7 @@ all:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/myservice/hosts.yaml playbooks/deploy-keepalived.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-keepalived.yaml
 ```
 
 ## Author

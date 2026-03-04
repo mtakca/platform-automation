@@ -184,14 +184,10 @@ deploy-ping: check-app-inventory ## Test connectivity to all app hosts
 # Terraform + Ansible in ONE command
 # =============================================================================
 
-TERRAFORM_BASE := ../infra-terraform-core
-# App-specific code directory (code/myapp, code/myapp-new, etc.)
-# For myapp-new, we reuse code/myapp module with different tfvars
-TERRAFORM_CODE_DIR := $(TERRAFORM_BASE)/code/myapp
-TERRAFORM_INVENTORY := inventories/$(ENV)/$(ENV).34.$(APP).yaml
+TF_DIR := ../terraform
 
 # VCD Access Token - fetched from VCD using refresh token
-ACCESS_TOKEN := $(shell cd $(TERRAFORM_BASE) && python3 scripts/get_token.py $(ENV) $(APP) 2>/dev/null)
+ACCESS_TOKEN := $(shell python3 ../scripts/get_token.py $(ENV) $(APP) 2>/dev/null)
 
 full-stack: ## FULL AUTOMATION: Terraform Apply + Ansible Deploy (make full-stack ENV=uat APP=myapp)
 	@if [ -z "$(ACCESS_TOKEN)" ]; then echo "$(YELLOW)ERROR: Failed to get VCD access token. Check VCD_REFRESH_TOKEN env var$(NC)"; exit 1; fi
@@ -201,17 +197,17 @@ full-stack: ## FULL AUTOMATION: Terraform Apply + Ansible Deploy (make full-stac
 	@echo ""
 	@echo "$(YELLOW)Phase 1: Terraform Apply$(NC)"
 	@echo "─────────────────────────────────────────────────────────────────"
-	cd $(TERRAFORM_CODE_DIR) && terraform init -backend-config=../../environments/$(ENV)/backend-$(APP).hcl -reconfigure
-	cd $(TERRAFORM_CODE_DIR) && terraform apply -var-file=../../environments/$(ENV)/$(APP).tfvars -var="vcd_access_token=$(ACCESS_TOKEN)" -auto-approve
+	cd $(TF_DIR) && terraform init -backend-config=../environments/$(ENV)/backend-$(APP).hcl -reconfigure
+	cd $(TF_DIR) && terraform apply -var-file=../environments/$(ENV)/$(APP).tfvars -var="vcd_access_token=$(ACCESS_TOKEN)" -auto-approve
 
 	@echo ""
-	@echo "$(YELLOW)Phase 2: Wait for VMs$(NC)"
+	@echo "$(YELLOW)Phase 2: Wait for VM Readiness (SSH + cloud-init + disk mount)$(NC)"
 	@echo "─────────────────────────────────────────────────────────────────"
-	@sleep 30
+	ansible-playbook -i ../environments/$(ENV)/$(APP).ini $(PLAYBOOKS_DIR)/wait_for_ready.yaml
 	@echo ""
 	@echo "$(YELLOW)Phase 3: Ansible Deploy$(NC)"
 	@echo "─────────────────────────────────────────────────────────────────"
-	ansible-playbook -i $(TERRAFORM_INVENTORY) $(PLAYBOOKS_DIR)/deploy-$(APP).yaml --become
+	ansible-playbook -i ../environments/$(ENV)/$(APP).ini $(PLAYBOOKS_DIR)/deploy-$(APP).yaml --become
 	@echo ""
 	@echo "$(GREEN)═══════════════════════════════════════════════════════════════$(NC)"
 	@echo "$(GREEN)  ✅ $(APP) FULL STACK DEPLOYMENT COMPLETE$(NC)"
@@ -221,12 +217,13 @@ full-stack-dry: ## Dry-run full-stack (terraform plan + ansible check)
 	@echo "$(YELLOW)DRY-RUN: Full stack $(APP) on $(ENV)$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Phase 1: Terraform Plan$(NC)"
-	cd $(TERRAFORM_CODE_DIR) && terraform init -backend-config=../../environments/$(ENV)/backend-$(APP).hcl -reconfigure
-	cd $(TERRAFORM_CODE_DIR) && terraform plan -var-file=../../environments/$(ENV)/$(APP).tfvars
+	cd $(TF_DIR) && terraform init -backend-config=../environments/$(ENV)/backend-$(APP).hcl -reconfigure
+	cd $(TF_DIR) && terraform plan -var-file=../environments/$(ENV)/$(APP).tfvars
 	@echo ""
 	@echo "$(YELLOW)Phase 2: Ansible Check (using existing inventory)$(NC)"
-	@if [ -f "$(TERRAFORM_INVENTORY)" ]; then \
-		ansible-playbook -i $(TERRAFORM_INVENTORY) $(PLAYBOOKS_DIR)/deploy-$(APP).yaml --become --check --diff; \
+	@if [ -f "../environments/$(ENV)/$(APP).ini" ]; then \
+		ansible-playbook -i ../environments/$(ENV)/$(APP).ini $(PLAYBOOKS_DIR)/deploy-$(APP).yaml --become --check --diff; \
 	else \
 		echo "$(YELLOW)No inventory yet - run terraform apply first$(NC)"; \
 	fi
+

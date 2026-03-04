@@ -18,7 +18,7 @@ nfs_exports:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/nfs/hosts.yaml playbooks/deploy-nfs-server.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-nfs-server.yaml
 ```
 
 ## Author

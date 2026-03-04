@@ -214,9 +214,9 @@ full-stack: ## FULL AUTOMATION: Terraform Apply + Ansible Deploy (make full-stac
 	$(MAKE) tf-apply ENV=$(ENV) APP=$(APP)
 
 	@echo ""
-	@echo "$(YELLOW)Phase 2: Wait for VMs$(NC)"
+	@echo "$(YELLOW)Phase 2: Wait for VM Readiness (SSH + cloud-init + disk mount)$(NC)"
 	@echo "─────────────────────────────────────────────────────────────────"
-	@sleep 30
+	cd $(ANSIBLE_DIR) && ansible-playbook -i ../$(INVENTORY) $(PLAYBOOKS_DIR)/wait_for_ready.yaml
 
 	@echo ""
 	@echo "$(YELLOW)Phase 3: Ansible Deploy$(NC)"

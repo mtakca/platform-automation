@@ -19,7 +19,7 @@ nfs_mounts:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/hosts.yaml playbooks/deploy-nfs-client.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-nfs-client.yaml
 ```
 
 ## Author

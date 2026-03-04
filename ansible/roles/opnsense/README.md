@@ -40,7 +40,7 @@ ansible-galaxy collection install puzzle.opnsense
 ## Usage
 
 ```bash
-ansible-playbook playbooks/deploy-opnsense.yaml -i inventories/p1/core.ini
+ansible-playbook playbooks/deploy-opnsense.yaml -i environments/p1/core.ini
 ```
 
 ## Default Rules

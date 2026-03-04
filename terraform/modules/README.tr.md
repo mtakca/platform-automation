@@ -1,18 +1,19 @@
-# infra-terraform-modules (Türkçe)
+# Terraform Modülleri
 
 Bu dizin, VMware Cloud Director altyapısı için yeniden kullanılabilir Terraform modüllerini içerir. Modüller uygulama altyapısı, VM template'leri, ağ ve temel altyapı bileşenlerini soyutlar.
 
-Mevcut modüller (özet)
+## Mevcut Modüller
+
 - `app_infra`: vApp + VM'ler ile tam uygulama altyapısı oluşturur. Node pool tanımları desteklenir.
 - `base_vm_template`: VM oluşturma için temel şablon; cloud-init / init scriptleri içerir.
 - `network`: İzole ağlar ve CIDR tanımları için yardımcı modül.
 - `vapp`, `base_infra` vb. diğer modüller altyapının katmanlarını sağlar.
 
-Kullanım (kısa örnek)
+## Kullanım
 
 ```hcl
 module "app_infra" {
-  source = "../infra-terraform-modules/modules/app_infra"
+  source = "./modules/app_infra"
 
   org_name        = var.org_name
   vdc_name        = var.vdc_name
@@ -37,9 +38,9 @@ module "app_infra" {
 }
 ```
 
-Değişkenler ve çıktıların tam tanımı her modülün `variables.tf` / `outputs.tf` dosyasında bulunmaktadır. Modül kullanırken input ve output isimlendirmelerine dikkat edin.
+Değişkenler ve çıktıların tam tanımı her modülün `variables.tf` / `outputs.tf` dosyasında bulunmaktadır.
 
-Test & Geliştirme
+## Test & Geliştirme
 
 ```bash
 cd modules/app_infra
@@ -47,15 +48,15 @@ terraform init
 terraform validate
 ```
 
-Entegrasyon notları
-- Modüller `infra-terraform-core` tarafından çağrılır. `core` tarafında modül çıktıları (ör. VM IP'leri, isimler) toplanıp Ansible envanteri oluşturulur.
-- Modüllerin ürettiği çıktılar `infra-terraform-core` içinde toplanıp `templates/inventory.yaml.tftpl` ile dosya oluşturuluyor. Bu yüzden modül çıktılarının beklenen formatta olması (ör. vm ip alanı) önemlidir.
+## Entegrasyon Notları
 
-Eksikler / Öneriler
+- Modüller `terraform/` dizini altındaki root konfigürasyon (`vms.tf`, `main.tf`) tarafından çağrılır.
+- Modül çıktıları (VM IP'leri, isimler) toplanıp `templates/service-inventory.yaml.tftpl` ile Ansible envanteri oluşturulur.
+- Modül çıktılarının beklenen formatta olması (ör. `vm_ip` alanı) önemlidir.
+
+## Öneriler
+
 - Her modül için örnek `usage` dosyası (minimal input setleri) eklenmeli.
 - Değişken ve çıktı açıklamaları modül içinde eksiksiz doldurulmalı.
 - Versioning: modül sürümlerini `ref` ile kullanmak için Git tag/semver politikası uygulanmalı.
-- Modül testleri: küçük bir integration testi veya `terratest` benzeri araçlarla doğrulama eklenmesi faydalı olur.
-
-Lisans
-- Dahili kullanım içindir.
+- Modül testleri: `terratest` benzeri araçlarla doğrulama eklenmesi faydalı olur.

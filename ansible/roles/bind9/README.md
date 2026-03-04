@@ -29,7 +29,7 @@ Master-Slave with Keepalived VIP for automatic failover.
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/devops/dns/hosts.yaml playbooks/deploy-bind9.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-bind9.yaml
 ```
 
 ## Author

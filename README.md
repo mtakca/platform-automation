@@ -53,7 +53,7 @@ This single command:
 1. Validates or creates the `example-myapp` Terraform Workspace.
 2. Reads properties from `environments/example/myapp.tfvars`.
 3. Provisions infrastructure and outputs IPs.
-4. Waits exactly 30 seconds for the network layers and SSH daemons to normalize.
+4. Runs `wait_for_ready.yaml` — verifies SSH connectivity, cloud-init completion, and disk mounts before proceeding.
 5. Invokes Ansible using the strict inventory `environments/example/myapp.ini`.
 
 ## Kubernetes Day-2 Operations

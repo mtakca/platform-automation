@@ -17,7 +17,7 @@ ssh_keys_to_remove:
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/hosts.yaml playbooks/remove-ssh-key.yaml -e @keys.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/remove-ssh-key.yaml -e @keys.yaml
 ```
 
 ## Author

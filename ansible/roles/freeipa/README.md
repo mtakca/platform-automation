@@ -35,7 +35,7 @@ Installs and configures FreeIPA Server for centralized identity management (LDAP
 ## Usage
 
 ```bash
-ansible-playbook playbooks/deploy-freeipa.yaml -i inventories/p1/devops.ini
+ansible-playbook playbooks/deploy-freeipa.yaml -i environments/p1/devops.ini
 ```
 
 ## Post-Installation

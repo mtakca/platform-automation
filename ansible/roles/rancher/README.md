@@ -26,7 +26,7 @@ rancher_data_dir: "/mnt/data01/rancher"
 
 ## Usage
 ```bash
-ansible-playbook -i inventories/uat/myenv/rancher/hosts.yaml playbooks/deploy-rancher.yaml
+ansible-playbook -i environments/uat/myapp.ini playbooks/deploy-rancher.yaml
 ```
 
 ## Author
